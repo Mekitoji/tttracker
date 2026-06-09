@@ -282,3 +282,37 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// SearchHit is a ticket returned by Search, paired with its project key so a
+// display key (e.g. "PET-12") can be formed without another lookup.
+type SearchHit struct {
+	Ticket     Ticket
+	ProjectKey string
+}
+
+// Search runs a full-text search across all projects. The free-text input is
+// escaped into an FTS5 query: each whitespace-separated token becomes a quoted
+// term (implicitly AND-ed) and the final token gets a prefix match, so typing
+// is incremental. An empty query returns no results (and no error).
+func (s *Service) Search(ctx context.Context, input string) ([]SearchHit, error) {
+	match := toFTSQuery(input)
+	if match == "" {
+		return nil, nil
+	}
+	return s.tickets.Search(ctx, s.db, match)
+}
+
+func toFTSQuery(input string) string {
+	fields := strings.Fields(input)
+	if len(fields) == 0 {
+		return ""
+	}
+	terms := make([]string, len(fields))
+	for i, f := range fields {
+		// Quote each token (escaping embedded quotes) so punctuation in the
+		// user's input is never interpreted as FTS5 query syntax.
+		terms[i] = `"` + strings.ReplaceAll(f, `"`, `""`) + `"`
+	}
+	terms[len(terms)-1] += "*" // prefix-match the last (in-progress) token
+	return strings.Join(terms, " ")
+}

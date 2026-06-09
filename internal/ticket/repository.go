@@ -102,6 +102,53 @@ func (Repository) ListByProject(ctx context.Context, q db.DBTX, projectID int64)
 	return out, rows.Err()
 }
 
+// Search runs an FTS5 MATCH over tickets and returns hits (with project key)
+// ranked by relevance. match must already be a valid FTS5 query string.
+func (Repository) Search(ctx context.Context, q db.DBTX, match string) ([]SearchHit, error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT t.id, t.project_id, t.number, t.title, t.description, t.type, t.status,
+		        t.priority, t.labels, t.created_at, t.updated_at, t.completed_at, p.key
+		 FROM ticket_search s
+		 JOIN tickets t ON t.id = s.rowid
+		 JOIN projects p ON p.id = t.project_id
+		 WHERE ticket_search MATCH ?
+		 ORDER BY rank`, match)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			fmt.Printf("Error closing rows: %v\n", err)
+		}
+	}()
+
+	var out []SearchHit
+	for rows.Next() {
+		var t Ticket
+		var typ, st, pr, labels, created, updated, pkey string
+		var completed sql.NullString
+		if err := rows.Scan(
+			&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description,
+			&typ, &st, &pr, &labels, &created, &updated, &completed, &pkey,
+		); err != nil {
+			return nil, err
+		}
+		t.Type = Type(typ)
+		t.Status = Status(st)
+		t.Priority = Priority(pr)
+		t.Labels = unmarshalLabels(labels)
+		t.CreatedAt, _ = clock.Parse(created)
+		t.UpdatedAt, _ = clock.Parse(updated)
+		if completed.Valid {
+			if ct, err := clock.Parse(completed.String); err == nil {
+				t.CompletedAt = &ct
+			}
+		}
+		out = append(out, SearchHit{Ticket: t, ProjectKey: pkey})
+	}
+	return out, rows.Err()
+}
+
 func scanTicket(rs rowScanner) (*Ticket, error) {
 	var t Ticket
 	var typ, st, pr, labels, created, updated string

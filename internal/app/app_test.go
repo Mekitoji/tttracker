@@ -316,6 +316,66 @@ func TestProjectRepoPath(t *testing.T) {
 	}
 }
 
+func TestSearch(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "fix sqlite migration"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "board view polish"}); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := a.Tickets.Search(ctx, "sqlite")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Ticket.Title != "fix sqlite migration" {
+		t.Fatalf("want 1 sqlite hit, got %+v", hits)
+	}
+	if hits[0].ProjectKey != "PET" {
+		t.Fatalf("project key wrong: %q", hits[0].ProjectKey)
+	}
+
+	// Prefix match on an in-progress token.
+	if hits, _ := a.Tickets.Search(ctx, "migr"); len(hits) != 1 {
+		t.Fatalf("prefix search want 1, got %d", len(hits))
+	}
+	// Special characters must be escaped, not interpreted as query syntax.
+	if _, err := a.Tickets.Search(ctx, "sqlite-migration"); err != nil {
+		t.Fatalf("special-char query errored: %v", err)
+	}
+	// Empty query: no results, no error.
+	if hits, err := a.Tickets.Search(ctx, "   "); err != nil || len(hits) != 0 {
+		t.Fatalf("empty query: hits=%d err=%v", len(hits), err)
+	}
+}
+
+func TestProjectSetNameDescription(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+
+	if _, err := a.Projects.SetName(ctx, "PET", "my cool project [wip]"); err != nil {
+		t.Fatalf("set name: %v", err)
+	}
+	if _, err := a.Projects.SetDescription(ctx, "PET", "the description"); err != nil {
+		t.Fatalf("set description: %v", err)
+	}
+	p, _ := a.Projects.Get(ctx, "PET")
+	if p.Name != "my cool project [wip]" {
+		t.Fatalf("name not updated: %q", p.Name)
+	}
+	if p.Description != "the description" {
+		t.Fatalf("description not updated: %q", p.Description)
+	}
+	// Empty name is rejected.
+	if _, err := a.Projects.SetName(ctx, "PET", "  "); !errors.Is(err, apperr.ErrInvalid) {
+		t.Fatalf("want ErrInvalid for empty name, got %v", err)
+	}
+}
+
 // --- helpers ---
 
 func mustProject(t *testing.T, a *app.App, key string) {

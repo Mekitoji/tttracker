@@ -85,6 +85,48 @@ func (s *Service) SetRepoPath(ctx context.Context, key, repoPath string) (*Proje
 	return out, err
 }
 
+// SetName updates the project's free-form display name (any characters).
+func (s *Service) SetName(ctx context.Context, key, name string) (*Project, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("%w: empty project name", apperr.ErrInvalid)
+	}
+	var out *Project
+	err := db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		p, err := s.repo.GetByKey(ctx, tx, key)
+		if err != nil {
+			return err
+		}
+		p.Name = name
+		p.UpdatedAt = s.clock.Now()
+		if err := s.repo.Update(ctx, tx, p); err != nil {
+			return err
+		}
+		out = p
+		return nil
+	})
+	return out, err
+}
+
+// SetDescription replaces the project's description (may be empty).
+func (s *Service) SetDescription(ctx context.Context, key, description string) (*Project, error) {
+	var out *Project
+	err := db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		p, err := s.repo.GetByKey(ctx, tx, key)
+		if err != nil {
+			return err
+		}
+		p.Description = description
+		p.UpdatedAt = s.clock.Now()
+		if err := s.repo.Update(ctx, tx, p); err != nil {
+			return err
+		}
+		out = p
+		return nil
+	})
+	return out, err
+}
+
 func normalizeRepoPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {

@@ -12,9 +12,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"tttracker/internal/app"
+	"tttracker/internal/clock"
 	"tttracker/internal/db"
 	"tttracker/internal/editor"
 	"tttracker/internal/paths"
+	"tttracker/internal/tui"
 )
 
 func main() {
@@ -33,8 +36,9 @@ func main() {
 			fail(err)
 		}
 	case "", "tui":
-		fmt.Println("TUI not implemented yet (Phase 2).")
-		fmt.Println("Available now: tracker init | tracker editor-smoke")
+		if err := runTUI(""); err != nil {
+			fail(err)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		os.Exit(2)
@@ -63,6 +67,28 @@ func runInit(override string) error {
 	}
 	fmt.Printf("Initialized tracker data at %s\n", dir)
 	return nil
+}
+
+// runTUI resolves the data dir, ensures the database exists and is migrated,
+// then launches the terminal UI.
+func runTUI(override string) error {
+	dir, err := paths.DataDir(override)
+	if err != nil {
+		return err
+	}
+	if err := paths.EnsureLayout(dir); err != nil {
+		return err
+	}
+	database, err := db.Open(paths.DBPath(dir))
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	if err := db.Migrate(database); err != nil {
+		return err
+	}
+	application := app.New(database, clock.Real{}, paths.AttachmentsDir(dir))
+	return tui.Run(application)
 }
 
 // --- editor-smoke: manual gate for tea.ExecProcess + $EDITOR ---
