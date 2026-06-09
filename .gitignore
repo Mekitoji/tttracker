@@ -1,0 +1,17 @@
+# Binaries
+/tracker
+/tracker.exe
+*.test
+*.out
+
+# Local data
+.data/
+docs/
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor noise
+.DS_Store
+
+
