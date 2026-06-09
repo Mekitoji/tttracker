@@ -86,13 +86,43 @@ func (Repository) List(ctx context.Context, q db.DBTX) ([]Project, error) {
 	return out, rows.Err()
 }
 
+func (Repository) Delete(ctx context.Context, q db.DBTX, id int64) error {
+	res, err := q.ExecContext(ctx, `
+		DELETE FROM projects
+		WHERE id = ?
+	`, id)
+	if err != nil {
+		return fmt.Errorf("delete project %d: %w", id, err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get affected rows after deleting project %d: %w", id, err)
+	}
+
+	if affected == 0 {
+		return fmt.Errorf("%w: id=%d", apperr.ErrNotFound, id)
+	}
+
+	return nil
+}
+
 func scanProject(rs rowScanner) (*Project, error) {
 	var p Project
 	var created, updated string
 	if err := rs.Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.RepoPath, &created, &updated); err != nil {
 		return nil, err
 	}
-	p.CreatedAt, _ = clock.Parse(created)
-	p.UpdatedAt, _ = clock.Parse(updated)
+	createdAt, err := clock.Parse(created)
+	if err != nil {
+		return nil, fmt.Errorf("parse project created_at %q: %w", created, err)
+	}
+	updatedAt, err := clock.Parse(updated)
+	if err != nil {
+		return nil, fmt.Errorf("parse project updated_at %q: %w", updated, err)
+	}
+	p.CreatedAt = createdAt
+	p.UpdatedAt = updatedAt
+
 	return &p, nil
 }

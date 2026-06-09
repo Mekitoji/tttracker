@@ -17,15 +17,24 @@ import (
 
 var keyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,9}$`)
 
-// Service holds the project business logic.
-type Service struct {
-	db    *sql.DB
-	repo  *Repository
-	clock clock.Clock
+// AttachmentRemover deletes the on-disk attachment files for a project. It is
+// satisfied by the attachment service and injected here so project deletion can
+// clean up files without the project package importing the attachment package
+// (which already imports project).
+type AttachmentRemover interface {
+	RemoveProjectFiles(projectKey string) error
 }
 
-func NewService(database *sql.DB, repo *Repository, clk clock.Clock) *Service {
-	return &Service{db: database, repo: repo, clock: clk}
+// Service holds the project business logic.
+type Service struct {
+	db          *sql.DB
+	repo        *Repository
+	clock       clock.Clock
+	attachments AttachmentRemover
+}
+
+func NewService(database *sql.DB, repo *Repository, clk clock.Clock, attachments AttachmentRemover) *Service {
+	return &Service{db: database, repo: repo, clock: clk, attachments: attachments}
 }
 
 // Create validates the key, ensures it is unique, and inserts the project.
@@ -147,6 +156,10 @@ func normalizeRepoPath(p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Pointing at a repo's ".git" entry is treated as pointing at the repo root.
+	if filepath.Base(abs) == ".git" {
+		abs = filepath.Dir(abs)
+	}
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("%w: %q is not an existing directory", apperr.ErrInvalid, p)
 	}
@@ -159,6 +172,25 @@ func normalizeRepoPath(p string) (string, error) {
 // Get returns the project with the given key.
 func (s *Service) Get(ctx context.Context, key string) (*Project, error) {
 	return s.repo.GetByKey(ctx, s.db, key)
+}
+
+// Delete removes the project and (via DB cascade) all its tickets, subtasks,
+// comments, attachment metadata, and activity; the FTS index is cleaned by the
+// ticket triggers. After the transaction commits, the project's attachment files
+// are removed best-effort (filesystem work is not part of the transaction, and
+// an orphaned file is safer than a dangling row).
+func (s *Service) Delete(ctx context.Context, key string) error {
+	if err := db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		p, err := s.repo.GetByKey(ctx, tx, key)
+		if err != nil {
+			return err
+		}
+		return s.repo.Delete(ctx, tx, p.ID)
+	}); err != nil {
+		return err
+	}
+	_ = s.attachments.RemoveProjectFiles(key)
+	return nil
 }
 
 // List returns all projects ordered by key.

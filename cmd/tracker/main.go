@@ -1,21 +1,13 @@
-// Command tracker is the entry point for the local ticket tracker.
-//
-// Phase 0 wires only the foundation: `init` (create the data dir + run
-// migrations) and `editor-smoke` (a manual gate for the $EDITOR-in-TUI flow).
-// The real TUI lands in Phase 2.
+// Command tracker is the entry point for the local tui ticket tracker.
 package main
 
 import (
 	"fmt"
 	"os"
-	"strconv"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"tttracker/internal/app"
 	"tttracker/internal/clock"
 	"tttracker/internal/db"
-	"tttracker/internal/editor"
 	"tttracker/internal/paths"
 	"tttracker/internal/tui"
 )
@@ -29,10 +21,6 @@ func main() {
 	switch cmd {
 	case "init":
 		if err := runInit(""); err != nil {
-			fail(err)
-		}
-	case "editor-smoke":
-		if err := runEditorSmoke(); err != nil {
 			fail(err)
 		}
 	case "", "tui":
@@ -83,56 +71,16 @@ func runTUI(override string) error {
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			fmt.Printf("Error closing database: %v", err)
+		}
+	}()
 	if err := db.Migrate(database); err != nil {
 		return err
 	}
 	application := app.New(database, clock.Real{}, paths.AttachmentsDir(dir))
 	return tui.Run(application)
-}
-
-// --- editor-smoke: manual gate for tea.ExecProcess + $EDITOR ---
-
-type smokeModel struct {
-	content string
-	status  string
-}
-
-func (m smokeModel) Init() tea.Cmd { return nil }
-
-func (m smokeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "e":
-			return m, editor.OpenInTUI(m.content)
-		case "q", "esc", "ctrl+c":
-			return m, tea.Quit
-		}
-	case editor.EditedMsg:
-		if msg.Err != nil {
-			m.status = "error: " + msg.Err.Error()
-		} else {
-			m.content = msg.Content
-			m.status = "terminal restored OK; read back " + strconv.Itoa(len(msg.Content)) + " bytes"
-		}
-	}
-	return m, nil
-}
-
-func (m smokeModel) View() string {
-	return fmt.Sprintf(
-		"editor smoke test\n\n"+
-			"press 'e' to open $EDITOR, 'q' to quit\n\n"+
-			"status: %s\n\n"+
-			"--- content ---\n%s\n",
-		m.status, m.content,
-	)
-}
-
-func runEditorSmoke() error {
-	_, err := tea.NewProgram(smokeModel{content: "# edit me\n", status: "ready"}).Run()
-	return err
 }
 
 func fail(err error) {

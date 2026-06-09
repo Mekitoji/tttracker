@@ -48,6 +48,11 @@ func (m projectsModel) Update(msg tea.Msg) (projectsModel, tea.Cmd) {
 				k := m.projects[m.cursor].Key
 				return m, func() tea.Msg { return openProjectEditMsg{key: k} }
 			}
+		case "x":
+			if len(m.projects) > 0 {
+				k := m.projects[m.cursor].Key
+				return m, func() tea.Msg { return askDeleteProjectMsg{key: k} }
+			}
 		case "q":
 			return m, tea.Quit
 		}
@@ -57,19 +62,25 @@ func (m projectsModel) Update(msg tea.Msg) (projectsModel, tea.Cmd) {
 
 func (m projectsModel) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Projects") + "\n\n")
+	b.WriteString(titleStyle.Render("Projects"))
+	b.WriteString("\n\n")
 	if len(m.projects) == 0 {
-		b.WriteString(helpStyle.Render("No projects yet — press n to create one.") + "\n")
+		b.WriteString(helpStyle.Render("No projects yet — press n to create one."))
+		b.WriteString("\n")
 	}
 	for i, p := range m.projects {
 		line := fmt.Sprintf("%-10s %s", p.Key, p.Name)
 		if i == m.cursor {
-			b.WriteString(selectedStyle.Render("> "+line) + "\n")
+			b.WriteString(selectedStyle.Render("> " + line))
+			b.WriteString("\n")
 		} else {
-			b.WriteString("  " + line + "\n")
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteString("\n")
 		}
 	}
-	b.WriteString("\n" + helpStyle.Render("↑/↓ move • enter open • n new • e edit • q quit"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("↑/↓ move • enter open • n new • e edit • x delete • q quit"))
 	return b.String()
 }
 

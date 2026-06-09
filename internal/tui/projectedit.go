@@ -30,8 +30,9 @@ var peFields = []string{"Name", "Repo path", "Description"}
 // is the project's stable identity and is not editable here. It is self-contained
 // (holds the facade), opening a text input or filepicker per field.
 type projectEditModel struct {
-	app *app.App
-	ctx context.Context
+	app    *app.App
+	ctx    context.Context
+	finder repoFinder
 
 	key         string
 	name        string
@@ -42,18 +43,25 @@ type projectEditModel struct {
 	mode   peMode
 	input  textinput.Model
 	picker filepicker.Model
+
+	// manual repo search state
+	repos     []string
+	results   []string
+	resCursor int
+	searching bool
+
 	errMsg string
 
 	width, height int
 }
 
-func newProjectEditModel(a *app.App, ctx context.Context, projectKey string, w, h int) (projectEditModel, error) {
+func newProjectEditModel(a *app.App, ctx context.Context, projectKey string, w, h int, finder repoFinder) (projectEditModel, error) {
 	p, err := a.Projects.Get(ctx, projectKey)
 	if err != nil {
 		return projectEditModel{}, err
 	}
 	return projectEditModel{
-		app: a, ctx: ctx, key: p.Key, name: p.Name, repoPath: p.RepoPath,
+		app: a, ctx: ctx, finder: finder, key: p.Key, name: p.Name, repoPath: p.RepoPath,
 		description: p.Description, width: w, height: h,
 	}, nil
 }
@@ -71,7 +79,9 @@ func (m projectEditModel) Update(msg tea.Msg) (projectEditModel, tea.Cmd) {
 		return m.updateMenu(msg)
 	case peRepoPick:
 		return m.updatePicker(msg)
-	default: // peName, peDesc, peRepoManual
+	case peRepoManual:
+		return m.updateManualRepo(msg)
+	default: // peName, peDesc
 		return m.updateInput(msg)
 	}
 }
@@ -114,7 +124,7 @@ func (m projectEditModel) openPicker() (projectEditModel, tea.Cmd) {
 	fp := filepicker.New()
 	fp.DirAllowed = true
 	fp.FileAllowed = false
-	fp.ShowHidden = true
+	fp.ShowHidden = false // hidden dirs off by default; toggle with "."
 	start := m.repoPath
 	if start == "" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -146,16 +156,80 @@ func (m projectEditModel) updatePicker(msg tea.Msg) (projectEditModel, tea.Cmd) 
 		case "esc":
 			m.mode = peMenu
 			return m, nil
+		case ".":
+			m.picker.ShowHidden = !m.picker.ShowHidden
+			return m, m.picker.Init()
 		case "i", "tab":
-			m.input = newInput("/path/to/repo", m.repoPath)
-			m.mode = peRepoManual
-			return m, textinput.Blink
+			return m.openManual()
 		}
 	}
 	var cmd tea.Cmd
 	m.picker, cmd = m.picker.Update(msg)
 	if ok, path := m.picker.DidSelectFile(msg); ok {
 		return m.saveRepoPath(path), nil
+	}
+	return m, cmd
+}
+
+// openManual switches to search/manual-entry mode and kicks off an async scan
+// for git repos, so a slow scan never freezes the UI.
+func (m projectEditModel) openManual() (projectEditModel, tea.Cmd) {
+	m.input = newInput("type to search repos, or enter a path", m.repoPath)
+	m.repos = nil
+	m.results = nil
+	m.resCursor = -1
+	m.searching = true
+	m.mode = peRepoManual
+	m.errMsg = ""
+
+	finder := m.finder
+	return m, func() tea.Msg {
+		if finder == nil {
+			return reposLoadedMsg{}
+		}
+		return reposLoadedMsg{repos: finder.allRepos()}
+	}
+}
+
+// setRepos receives the async scan result and refreshes the filtered list.
+func (m projectEditModel) setRepos(repos []string) projectEditModel {
+	m.repos = repos
+	m.searching = false
+	m.results = filterRepos(repos, m.input.Value())
+	m.resCursor = -1
+	return m
+}
+
+func (m projectEditModel) updateManualRepo(msg tea.Msg) (projectEditModel, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok {
+		switch k.String() {
+		case "esc":
+			m.mode = peRepoPick
+			m.errMsg = ""
+			return m, nil
+		case "down", "ctrl+j":
+			if m.resCursor < len(m.results)-1 {
+				m.resCursor++
+			}
+			return m, nil
+		case "up", "ctrl+k":
+			if m.resCursor > -1 {
+				m.resCursor--
+			}
+			return m, nil
+		case "enter":
+			if m.resCursor >= 0 && m.resCursor < len(m.results) {
+				return m.saveRepoPath(m.results[m.resCursor]), nil
+			}
+			return m.submitManual(), nil
+		}
+	}
+	prev := m.input.Value()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	if m.input.Value() != prev {
+		m.results = filterRepos(m.repos, m.input.Value())
+		m.resCursor = -1
 	}
 	return m, cmd
 }
@@ -184,8 +258,6 @@ func (m projectEditModel) submitInput() projectEditModel {
 		_, err = m.app.Projects.SetName(m.ctx, m.key, val)
 	case peDesc:
 		_, err = m.app.Projects.SetDescription(m.ctx, m.key, val)
-	case peRepoManual:
-		_, err = m.app.Projects.SetRepoPath(m.ctx, m.key, val)
 	}
 	if err != nil {
 		m.errMsg = err.Error()
@@ -197,13 +269,18 @@ func (m projectEditModel) submitInput() projectEditModel {
 	return m
 }
 
+// submitManual saves the literally typed path (when no search result is picked).
+func (m projectEditModel) submitManual() projectEditModel {
+	return m.saveRepoPath(strings.TrimSpace(m.input.Value()))
+}
+
 func (m projectEditModel) saveRepoPath(path string) projectEditModel {
 	if _, err := m.app.Projects.SetRepoPath(m.ctx, m.key, path); err != nil {
 		m.errMsg = err.Error()
-	} else {
-		m = m.reload()
-		m.errMsg = ""
+		return m // stay so the user sees the error
 	}
+	m = m.reload()
+	m.errMsg = ""
 	m.mode = peMenu
 	return m
 }
@@ -215,49 +292,101 @@ func (m projectEditModel) View() string {
 	case peDesc:
 		return m.inputView("Edit description")
 	case peRepoManual:
-		return m.inputView("Repo path (manual)")
+		return m.manualView()
 	case peRepoPick:
 		return m.pickerView()
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Edit project "+m.key) + "\n\n")
+	b.WriteString(titleStyle.Render("Edit project " + m.key))
+	b.WriteString("\n\n")
 	values := []string{m.name, displayOrDash(m.repoPath), displayOrDash(m.description)}
 	for i, label := range peFields {
 		line := fmt.Sprintf("%-12s %s", label+":", values[i])
 		if i == m.cursor {
-			b.WriteString(selectedStyle.Render("> "+line) + "\n")
+			b.WriteString(selectedStyle.Render("> " + line))
+			b.WriteString("\n")
 		} else {
-			b.WriteString("  " + line + "\n")
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteString("\n")
 		}
 	}
 	if m.errMsg != "" {
-		b.WriteString("\n" + errorStyle.Render(m.errMsg) + "\n")
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + helpStyle.Render("↑/↓ • enter edit • esc back   (KEY is fixed)"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("↑/↓ • enter edit • esc back   (KEY is fixed)"))
 	return b.String()
 }
 
 func (m projectEditModel) inputView(title string) string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(title) + "\n\n")
-	b.WriteString(m.input.View() + "\n")
+	b.WriteString(titleStyle.Render(title))
+	b.WriteString("\n\n")
+	b.WriteString(m.input.View())
+	b.WriteString("\n")
 	if m.errMsg != "" {
-		b.WriteString("\n" + errorStyle.Render(m.errMsg) + "\n")
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + helpStyle.Render("enter save • esc cancel"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("enter save • esc cancel"))
+	return b.String()
+}
+
+func (m projectEditModel) manualView() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Repo path — search or type"))
+	b.WriteString("\n\n")
+	b.WriteString(m.input.View())
+	b.WriteString("\n\n")
+	switch {
+	case m.searching:
+		b.WriteString(helpStyle.Render("  scanning for git repos…"))
+		b.WriteString("\n")
+	case len(m.results) == 0:
+		b.WriteString(helpStyle.Render("  (no matching git repos)"))
+		b.WriteString("\n")
+	}
+	for i, r := range m.results {
+		if i == m.resCursor {
+			b.WriteString(selectedStyle.Render("> " + r))
+			b.WriteString("\n")
+		} else {
+			b.WriteString("  ")
+			b.WriteString(r)
+			b.WriteString("\n")
+		}
+	}
+	if m.errMsg != "" {
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("type to filter • ↑/↓ or ⌃j/⌃k pick • enter select / use typed • esc back"))
 	return b.String()
 }
 
 func (m projectEditModel) pickerView() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Select repo directory") + "\n")
-	b.WriteString(fieldStyle.Render(m.picker.CurrentDirectory) + "\n\n")
-	b.WriteString(m.picker.View() + "\n")
+	b.WriteString(titleStyle.Render("Select repo directory"))
+	b.WriteString("\n")
+	b.WriteString(fieldStyle.Render(m.picker.CurrentDirectory))
+	b.WriteString("\n\n")
+	b.WriteString(m.picker.View())
+	b.WriteString("\n")
 	if m.errMsg != "" {
-		b.WriteString("\n" + errorStyle.Render(m.errMsg) + "\n")
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + helpStyle.Render("↑/↓ move • → open • ← up • enter select dir • i manual • esc cancel"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("↑/↓ move • → open • ← up • enter select dir • . hidden • i search • esc cancel"))
 	return b.String()
 }
 

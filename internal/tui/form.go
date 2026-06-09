@@ -48,16 +48,21 @@ func (m formModel) Update(msg tea.Msg) (formModel, tea.Cmd) {
 
 func (m formModel) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(m.title) + "\n\n")
-	b.WriteString(m.input.View() + "\n")
+	b.WriteString(titleStyle.Render(m.title))
+	b.WriteString("\n\n")
+	b.WriteString(m.input.View())
+	b.WriteString("\n")
 	if m.errMsg != "" {
-		b.WriteString("\n" + errorStyle.Render(m.errMsg) + "\n")
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + helpStyle.Render("enter submit • esc cancel"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("enter submit • esc cancel"))
 	return b.String()
 }
 
-func (m formModel) setSize(w, h int) formModel {
+func (m formModel) setSize(w, _ int) formModel {
 	m.width = w
 	return m
 }

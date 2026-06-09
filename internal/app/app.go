@@ -30,21 +30,25 @@ type App struct {
 // New constructs the service graph over database, using clk as the time source
 // and attachmentsDir as the root for stored attachment files.
 func New(database *sql.DB, clk clock.Clock, attachmentsDir string) *App {
-	projects := project.NewRepository()
-	tickets := ticket.NewRepository()
-	subtasks := subtask.NewRepository()
-	comments := comment.NewRepository()
-	attachments := attachment.NewRepository()
+	projectRepo := project.NewRepository()
+	ticketRepo := ticket.NewRepository()
+	subtaskRepo := subtask.NewRepository()
+	commentRepo := comment.NewRepository()
+	attachmentRepo := attachment.NewRepository()
 	events := activity.NewRepository()
 	storage := attachment.NewStorage(attachmentsDir)
 
+	// Built before the project service, which takes it as its AttachmentRemover
+	// so deleting a project also removes its attachment files.
+	attachments := attachment.NewService(database, attachmentRepo, ticketRepo, projectRepo, events, storage, clk)
+
 	return &App{
 		DB:          database,
-		Projects:    project.NewService(database, projects, clk),
-		Tickets:     ticket.NewService(database, tickets, projects, events, clk),
-		Subtasks:    subtask.NewService(database, subtasks, tickets, projects, events, clk),
-		Comments:    comment.NewService(database, comments, tickets, projects, events, clk),
-		Attachments: attachment.NewService(database, attachments, tickets, projects, events, storage, clk),
+		Projects:    project.NewService(database, projectRepo, clk, attachments),
+		Tickets:     ticket.NewService(database, ticketRepo, projectRepo, events, clk),
+		Subtasks:    subtask.NewService(database, subtaskRepo, ticketRepo, projectRepo, events, clk),
+		Comments:    comment.NewService(database, commentRepo, ticketRepo, projectRepo, events, clk),
+		Attachments: attachments,
 		Activity:    activity.NewService(database, events),
 	}
 }

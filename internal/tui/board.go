@@ -3,10 +3,12 @@ package tui
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"tttracker/internal/app"
 	"tttracker/internal/ticket"
@@ -125,25 +127,20 @@ func (m boardModel) selected() (ticket.Ticket, bool) {
 func (m boardModel) View() string {
 	header := titleStyle.Render(fmt.Sprintf("%s — %s", m.projectKey, m.projectName))
 
-	innerW := m.width/len(boardStatuses) - 4
-	if innerW < 16 {
-		innerW = 16
-	}
+	innerW := max(m.width/len(boardStatuses)-4, 16)
 
 	cols := make([]string, len(boardStatuses))
 	for i, st := range boardStatuses {
 		var b strings.Builder
-		b.WriteString(columnTitleStyle.Render(boardTitles[st]) + "\n\n")
+		b.WriteString(columnTitleStyle.Render(boardTitles[st]))
+		b.WriteString("\n\n")
 		if len(m.columns[i]) == 0 {
 			b.WriteString(helpStyle.Render("—"))
 		}
 		for j, t := range m.columns[i] {
-			card := fmt.Sprintf("%s %s", ticket.Key(m.projectKey, t.Number), t.Title)
-			if i == m.col && j == m.row {
-				b.WriteString(selectedStyle.Render(truncate(card, innerW)) + "\n")
-			} else {
-				b.WriteString(truncate(card, innerW) + "\n")
-			}
+			selected := i == m.col && j == m.row
+			b.WriteString(renderCard(t, selected, innerW))
+			b.WriteString("\n")
 		}
 		style := columnStyle
 		if i == m.col {
@@ -160,6 +157,57 @@ func (m boardModel) View() string {
 func (m boardModel) setSize(w, h int) boardModel {
 	m.width, m.height = w, h
 	return m
+}
+
+// renderCard renders one board card: "[type] title" followed by colored label
+// chips. Truncation is ANSI-aware (ansi.Truncate) so styling escape codes are
+// never cut mid-sequence — that was what broke the layout and hid the last
+// label. The title yields width so the labels always fit. The selected card is
+// one solid highlighted line (labels plain) to avoid style bleed.
+func renderCard(t ticket.Ticket, selected bool, width int) string {
+	head := fmt.Sprintf("[%s] %s", t.Type, t.Title)
+	if selected {
+		line := head
+		if len(t.Labels) > 0 {
+			line += "  " + strings.Join(t.Labels, " ")
+		}
+		return selectedStyle.Render(ansi.Truncate(line, width, "…"))
+	}
+	if len(t.Labels) == 0 {
+		return ansi.Truncate(head, width, "…")
+	}
+	labels := renderLabels(t.Labels)
+	budget := width - ansi.StringWidth(labels) - 1
+	if budget < 6 { // labels dominate; truncate the whole composed line
+		return ansi.Truncate(head+" "+labels, width, "…")
+	}
+	return ansi.Truncate(head, budget, "…") + " " + labels
+}
+
+func renderLabels(labels []string) string {
+	var b strings.Builder
+	for i, l := range labels {
+		if i > 0 {
+			b.WriteString(" ")
+		}
+		b.WriteString(labelChip(l))
+	}
+	return b.String()
+}
+
+// labelPalette is a set of distinguishable background colors; each label gets one
+// deterministically by hashing its text, so a given label keeps a stable color.
+var labelPalette = []lipgloss.Color{
+	lipgloss.Color("203"), lipgloss.Color("215"), lipgloss.Color("179"),
+	lipgloss.Color("114"), lipgloss.Color("116"), lipgloss.Color("141"),
+	lipgloss.Color("211"), lipgloss.Color("180"),
+}
+
+func labelChip(label string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(label))
+	bg := labelPalette[h.Sum32()%uint32(len(labelPalette))]
+	return labelStyle.Background(bg).Foreground(lipgloss.Color("232")).Render(label)
 }
 
 func truncate(s string, w int) string {

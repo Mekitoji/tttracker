@@ -62,13 +62,23 @@ func (m projectCreateModel) Update(msg tea.Msg) (projectCreateModel, tea.Cmd) {
 
 func (m projectCreateModel) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("New project") + "\n\n")
-	b.WriteString(m.fieldLabel("Key", 0) + "\n" + m.keyInput.View() + "\n\n")
-	b.WriteString(m.fieldLabel("Name", 1) + "\n" + m.nameInput.View() + "\n")
+	b.WriteString(titleStyle.Render("New project"))
+	b.WriteString("\n\n")
+	b.WriteString(m.fieldLabel("Key", 0))
+	b.WriteString("\n")
+	b.WriteString(m.keyInput.View())
+	b.WriteString("\n\n")
+	b.WriteString(m.fieldLabel("Name", 1))
+	b.WriteString("\n")
+	b.WriteString(m.nameInput.View())
+	b.WriteString("\n")
 	if m.errMsg != "" {
-		b.WriteString("\n" + errorStyle.Render(m.errMsg) + "\n")
+		b.WriteString("\n")
+		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString("\n")
 	}
-	b.WriteString("\n" + helpStyle.Render("tab switch field • enter create • esc cancel"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("tab switch field • enter create • esc cancel"))
 	return b.String()
 }
 

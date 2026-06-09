@@ -28,6 +28,7 @@ const (
 	screenActionForm
 	screenSearch
 	screenProjectEdit
+	screenConfirm
 )
 
 type actionKind int
@@ -50,16 +51,19 @@ const (
 
 // messages emitted by sub-models via commands.
 type (
-	openProjectMsg     struct{ key string }
-	openTicketMsg      struct{ key string }
-	backMsg            struct{}
-	newProjectFormMsg  struct{}
-	newTicketFormMsg   struct{}
-	openSearchMsg      struct{}
-	openProjectEditMsg struct{ key string }
-	createProjectMsg   struct{ key, name string }
-	submitFormMsg      struct{ value string }
-	startActionMsg     struct {
+	openProjectMsg      struct{ key string }
+	openTicketMsg       struct{ key string }
+	backMsg             struct{}
+	newProjectFormMsg   struct{}
+	newTicketFormMsg    struct{}
+	openSearchMsg       struct{}
+	openProjectEditMsg  struct{ key string }
+	createProjectMsg    struct{ key, name string }
+	reposLoadedMsg      struct{ repos []string }
+	askDeleteProjectMsg struct{ key string }
+	deleteProjectMsg    struct{ key string }
+	submitFormMsg       struct{ value string }
+	startActionMsg      struct {
 		kind      actionKind
 		ticketKey string
 		entityID  int64  // subtask or comment id, depending on kind
@@ -89,6 +93,8 @@ type model struct {
 	search        searchModel
 	projectEdit   projectEditModel
 	projectCreate projectCreateModel
+	confirm       confirmModel
+	finder        repoFinder
 
 	pending pendingState
 
@@ -108,6 +114,7 @@ func Run(application *app.App) error {
 		ctx:      ctx,
 		screen:   screenProjects,
 		projects: pm,
+		finder:   newExecRepoFinder(),
 		width:    80,
 		height:   24,
 	}
@@ -158,6 +165,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenBoard
 		case screenSearch:
 			m.screen = screenBoard
+		case screenConfirm:
+			m.screen = screenProjects
 		case screenProjectEdit:
 			if pm, err := newProjectsModel(m.app, m.ctx); err == nil {
 				m.projects = pm.setSize(m.width, m.height)
@@ -183,12 +192,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenSearch
 		return m, textinput.Blink
 	case openProjectEditMsg:
-		pe, err := newProjectEditModel(m.app, m.ctx, msg.key, m.width, m.height)
+		pe, err := newProjectEditModel(m.app, m.ctx, msg.key, m.width, m.height, m.finder)
 		if err != nil {
 			m.status = err.Error()
 			return m, nil
 		}
 		m.projectEdit, m.status, m.screen = pe, "", screenProjectEdit
+		return m, nil
+	case reposLoadedMsg:
+		if m.screen == screenProjectEdit {
+			m.projectEdit = m.projectEdit.setRepos(msg.repos)
+		}
+		return m, nil
+	case askDeleteProjectMsg:
+		m.confirm = newConfirmDelete(msg.key)
+		m.screen = screenConfirm
+		return m, textinput.Blink
+	case deleteProjectMsg:
+		if err := m.app.Projects.Delete(m.ctx, msg.key); err != nil {
+			m.status = err.Error()
+		}
+		pm, err := newProjectsModel(m.app, m.ctx)
+		if err != nil {
+			m.status = err.Error()
+			return m, nil
+		}
+		m.projects = pm.setSize(m.width, m.height)
+		m.screen = screenProjects
 		return m, nil
 	case submitFormMsg:
 		if m.screen == screenActionForm {
@@ -225,6 +255,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.projectEdit, cmd = m.projectEdit.Update(msg)
 	case screenProjectForm:
 		m.projectCreate, cmd = m.projectCreate.Update(msg)
+	case screenConfirm:
+		m.confirm, cmd = m.confirm.Update(msg)
 	case screenTicketForm, screenActionForm:
 		m.form, cmd = m.form.Update(msg)
 	}
@@ -427,7 +459,7 @@ func clampCursor(c, n int) int {
 // parseLabels splits a comma-separated label string into a trimmed, non-empty list.
 func parseLabels(s string) []string {
 	var out []string
-	for _, p := range strings.Split(s, ",") {
+	for p := range strings.SplitSeq(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
@@ -454,6 +486,8 @@ func (m model) View() string {
 		body = m.search.View()
 	case screenProjectEdit:
 		body = m.projectEdit.View()
+	case screenConfirm:
+		body = m.confirm.View()
 	}
 	if m.status != "" {
 		body += "\n" + errorStyle.Render(m.status)

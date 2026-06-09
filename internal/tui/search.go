@@ -36,12 +36,12 @@ func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
 		switch key.String() {
 		case "esc":
 			return m, func() tea.Msg { return backMsg{} }
-		case "up":
+		case "up", "ctrl+k":
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			return m, nil
-		case "down":
+		case "down", "ctrl+j":
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
 			}
@@ -74,20 +74,27 @@ func (m searchModel) selected() (ticket.SearchHit, bool) {
 
 func (m searchModel) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Search") + "\n\n")
-	b.WriteString(m.input.View() + "\n\n")
+	b.WriteString(titleStyle.Render("Search"))
+	b.WriteString("\n\n")
+	b.WriteString(m.input.View())
+	b.WriteString("\n\n")
 	if strings.TrimSpace(m.input.Value()) != "" && len(m.results) == 0 {
-		b.WriteString(helpStyle.Render("(no matches)") + "\n")
+		b.WriteString(helpStyle.Render("(no matches)"))
+		b.WriteString("\n")
 	}
 	for i, h := range m.results {
 		line := fmt.Sprintf("%-10s %s", ticket.Key(h.ProjectKey, h.Ticket.Number), h.Ticket.Title)
 		if i == m.cursor {
-			b.WriteString(selectedStyle.Render("> "+line) + "\n")
+			b.WriteString(selectedStyle.Render("> " + line))
+			b.WriteString("\n")
 		} else {
-			b.WriteString("  " + line + "\n")
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteString("\n")
 		}
 	}
-	b.WriteString("\n" + helpStyle.Render("type to search • ↑/↓ • enter open • esc back"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("type to search • ↑/↓ or ⌃j/⌃k • enter open • esc back"))
 	return b.String()
 }
 

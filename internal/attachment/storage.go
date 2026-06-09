@@ -134,3 +134,9 @@ func detectMime(origName, path string) string {
 	}
 	return "application/octet-stream"
 }
+
+// RemoveProjectDir deletes all stored attachment files for a project. A missing
+// directory is not an error.
+func (s *Storage) RemoveProjectDir(projectKey string) error {
+	return os.RemoveAll(filepath.Join(s.root, projectKey))
+}

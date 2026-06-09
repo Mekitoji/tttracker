@@ -35,8 +35,12 @@ func newTestModel(t *testing.T, a *app.App) model {
 	if err != nil {
 		t.Fatalf("projects model: %v", err)
 	}
-	return model{app: a, ctx: context.Background(), screen: screenProjects, projects: pm, width: 120, height: 40}
+	return model{app: a, ctx: context.Background(), screen: screenProjects, projects: pm, finder: fakeFinder{}, width: 120, height: 40}
 }
+
+type fakeFinder struct{ repos []string }
+
+func (f fakeFinder) allRepos() []string { return f.repos }
 
 var (
 	keyEnter = tea.KeyMsg{Type: tea.KeyEnter}
@@ -377,5 +381,68 @@ func TestCommentEditAndDelete(t *testing.T) {
 	m = send(t, m, keyRunes("d"))
 	if len(m.detail.comments) != 0 {
 		t.Fatalf("comment not deleted: %d", len(m.detail.comments))
+	}
+}
+
+func TestRepoManualFinder(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestModel(t, a)
+	m.finder = fakeFinder{repos: []string{repo}} // finder returns our known repo
+
+	m = send(t, m, keyRunes("e"))                 // edit project
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyDown}) // cursor -> Repo path
+	m = send(t, m, keyEnter)                      // open filepicker
+	m = send(t, m, keyRunes("i"))                 // -> manual search
+	if m.projectEdit.mode != peRepoManual {
+		t.Fatalf("want manual mode, got %v", m.projectEdit.mode)
+	}
+	if len(m.projectEdit.results) != 1 || m.projectEdit.results[0] != repo {
+		t.Fatalf("finder results wrong: %+v", m.projectEdit.results)
+	}
+
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlJ}) // select first result (ctrl+j)
+	m = send(t, m, keyEnter)                       // pick -> SetRepoPath (validates .git)
+	if m.projectEdit.repoPath != repo {
+		t.Fatalf("repo path not set from finder: %q (want %q)", m.projectEdit.repoPath, repo)
+	}
+}
+
+func TestProjectDeleteFlow(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Projects.Create(ctx, "WRK", "Work", ""); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+
+	m = send(t, m, keyRunes("x")) // cursor on PET (sorted first) -> confirm
+	if m.screen != screenConfirm {
+		t.Fatalf("want confirm, got %v", m.screen)
+	}
+	// Empty/wrong input keeps the confirm screen with an error.
+	m = send(t, m, keyEnter)
+	if m.screen != screenConfirm || m.confirm.errMsg == "" {
+		t.Fatalf("empty confirm should stay with error: screen=%v err=%q", m.screen, m.confirm.errMsg)
+	}
+	// Type the key exactly, then confirm.
+	m = send(t, m, keyRunes("PET"))
+	m = send(t, m, keyEnter)
+	if m.screen != screenProjects {
+		t.Fatalf("want projects after delete, got %v", m.screen)
+	}
+	if len(m.projects.projects) != 1 || m.projects.projects[0].Key != "WRK" {
+		t.Fatalf("PET should be deleted, got %+v", m.projects.projects)
 	}
 }

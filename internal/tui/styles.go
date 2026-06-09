@@ -11,4 +11,5 @@ var (
 	columnStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	columnSelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1)
 	columnTitleStyle = lipgloss.NewStyle().Bold(true).Underline(true)
+	labelStyle       = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("155"))
 )

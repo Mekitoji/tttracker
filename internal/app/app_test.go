@@ -376,6 +376,60 @@ func TestProjectSetNameDescription(t *testing.T) {
 	}
 }
 
+func TestSetRepoPathAcceptsDotGit(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Pointing at the ".git" dir is accepted and stored as the repo root.
+	p, err := a.Projects.SetRepoPath(ctx, "PET", filepath.Join(repo, ".git"))
+	if err != nil {
+		t.Fatalf("set repo path via .git: %v", err)
+	}
+	if p.RepoPath != repo {
+		t.Fatalf("repo path should be the root: %q (want %q)", p.RepoPath, repo)
+	}
+}
+
+func TestDeleteProject(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "fix sqlite bug"}); err != nil {
+		t.Fatal(err)
+	}
+	// Attach a real file to verify on-disk cleanup.
+	src := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(src, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	at, err := a.Attachments.Attach(ctx, "PET-1", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(at.StoredPath); err != nil {
+		t.Fatalf("stored file should exist before delete: %v", err)
+	}
+
+	if err := a.Projects.Delete(ctx, "PET"); err != nil {
+		t.Fatalf("delete project: %v", err)
+	}
+	if _, err := a.Projects.Get(ctx, "PET"); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("project should be gone, got %v", err)
+	}
+	// Cascade reached tickets -> FTS index is empty (also proves trigger cleanup).
+	if hits, _ := a.Tickets.Search(ctx, "sqlite"); len(hits) != 0 {
+		t.Fatalf("FTS should be empty after cascade delete, got %d", len(hits))
+	}
+	// Attachment files removed from disk.
+	if _, err := os.Stat(at.StoredPath); !os.IsNotExist(err) {
+		t.Fatalf("attachment file should be removed, stat err=%v", err)
+	}
+}
+
 // --- helpers ---
 
 func mustProject(t *testing.T, a *app.App, key string) {

@@ -56,14 +56,19 @@ func (m pickerModel) Update(msg tea.Msg) (pickerModel, tea.Cmd) {
 
 func (m pickerModel) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(m.title) + "\n\n")
+	b.WriteString(titleStyle.Render(m.title))
+	b.WriteString("\n\n")
 	for i, o := range m.options {
 		if i == m.cursor {
-			b.WriteString(selectedStyle.Render("> "+o) + "\n")
+			b.WriteString(selectedStyle.Render("> " + o))
+			b.WriteString("\n")
 		} else {
-			b.WriteString("  " + o + "\n")
+			b.WriteString("  ")
+			b.WriteString(o)
+			b.WriteString("\n")
 		}
 	}
-	b.WriteString("\n" + helpStyle.Render("↑/↓ • enter select • esc cancel"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("↑/↓ • enter select • esc cancel"))
 	return b.String()
 }

@@ -132,22 +132,28 @@ func (m detailModel) View() string {
 	t := m.ticket
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(fmt.Sprintf("%s  %s", m.key, t.Title)) + "\n")
+	b.WriteString(titleStyle.Render(fmt.Sprintf("%s  %s", m.key, t.Title)))
+	b.WriteString("\n")
 	meta := fmt.Sprintf("status:%s  priority:%s  type:%s", t.Status, t.Priority, t.Type)
 	if len(t.Labels) > 0 {
 		meta += "  labels:" + strings.Join(t.Labels, ",")
 	}
-	b.WriteString(fieldStyle.Render(meta) + "\n\n")
+	b.WriteString(fieldStyle.Render(meta))
+	b.WriteString("\n\n")
 
 	if desc := renderMarkdown(t.Description, m.width); strings.TrimSpace(desc) != "" {
 		b.WriteString(desc)
 	} else {
-		b.WriteString(helpStyle.Render("(no description)") + "\n")
+		b.WriteString(helpStyle.Render("(no description)"))
+		b.WriteString("\n")
 	}
 
-	b.WriteString("\n" + columnTitleStyle.Render("Subtasks") + "\n")
+	b.WriteString("\n")
+	b.WriteString(columnTitleStyle.Render("Subtasks"))
+	b.WriteString("\n")
 	if len(m.subtasks) == 0 {
-		b.WriteString(helpStyle.Render("  (none)") + "\n")
+		b.WriteString(helpStyle.Render("  (none)"))
+		b.WriteString("\n")
 	}
 	for i, s := range m.subtasks {
 		box := "[ ]"
@@ -157,26 +163,36 @@ func (m detailModel) View() string {
 		b.WriteString(m.row(i, fmt.Sprintf("%s %s", box, s.Title)))
 	}
 
-	b.WriteString("\n" + columnTitleStyle.Render("Comments") + "\n")
+	b.WriteString("\n")
+	b.WriteString(columnTitleStyle.Render("Comments"))
+	b.WriteString("\n")
 	if len(m.comments) == 0 {
-		b.WriteString(helpStyle.Render("  (none)") + "\n")
+		b.WriteString(helpStyle.Render("  (none)"))
+		b.WriteString("\n")
 	}
 	for j, c := range m.comments {
 		b.WriteString(m.row(len(m.subtasks)+j, "• "+firstLine(c.Body)))
 	}
 
 	if len(m.events) > 0 {
-		b.WriteString("\n" + columnTitleStyle.Render("Activity") + "\n")
+		b.WriteString("\n")
+		b.WriteString(columnTitleStyle.Render("Activity"))
+		b.WriteString("\n")
 		for _, e := range m.events {
 			b.WriteString(fieldStyle.Render(fmt.Sprintf("  %s  %s",
-				e.CreatedAt.Local().Format("2006-01-02 15:04"), e.Type)) + "\n")
+				e.CreatedAt.Local().Format("2006-01-02 15:04"), e.Type)))
+			b.WriteString("\n")
 		}
 	}
 
-	b.WriteString("\n" + helpStyle.Render(
-		"m status • p prio • t type • r rename • l labels • e desc • s +subtask • c +comment"))
-	b.WriteString("\n" + helpStyle.Render(
-		"↑/↓ select • ␣ toggle • R rename-sub • enter edit-comment • d delete • q back"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(
+		"m status • p prio • t type • r rename • l labels • e desc • s +subtask • c +comment",
+	))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(
+		"↑/↓ select • ␣ toggle • R rename-sub • enter edit-comment • d delete • q back",
+	))
 	return b.String()
 }
 
@@ -216,8 +232,8 @@ func renderMarkdown(s string, width int) string {
 }
 
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 	return s
 }

@@ -31,6 +31,12 @@ func NewService(database *sql.DB, repo *Repository, tickets *ticket.Repository, 
 	}
 }
 
+// RemoveProjectFiles deletes all stored attachment files for a project (used when
+// the project is deleted; the metadata rows are removed by the DB cascade).
+func (s *Service) RemoveProjectFiles(projectKey string) error {
+	return s.storage.RemoveProjectDir(projectKey)
+}
+
 // Attach copies srcPath into the ticket's folder and records the metadata.
 func (s *Service) Attach(ctx context.Context, ticketKey, srcPath string) (*Attachment, error) {
 	pk, num, err := ticket.ParseKey(ticketKey)
