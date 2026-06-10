@@ -158,6 +158,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backMsg:
 		switch m.screen {
 		case screenDetail:
+			// Reload the board so edits made in the detail view (title, status,
+			// labels, …) are reflected when we return to it.
+			if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
+				bm.col, bm.row = m.board.col, m.board.row
+				bm.clampRow()
+				m.board = bm
+			}
 			m.screen = screenBoard
 		case screenBoard, screenProjectForm:
 			m.screen = screenProjects

@@ -446,3 +446,40 @@ func TestProjectDeleteFlow(t *testing.T) {
 		t.Fatalf("PET should be deleted, got %+v", m.projects.projects)
 	}
 }
+
+func TestBoardRefreshesAfterDetailEdit(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "old title"}); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+
+	m = send(t, m, keyEnter) // board
+	m = send(t, m, keyEnter) // detail
+	if m.screen != screenDetail {
+		t.Fatalf("want detail, got %v", m.screen)
+	}
+
+	// Rename the ticket from the detail view.
+	m = send(t, m, keyRunes("r"))
+	if m.screen != screenActionForm {
+		t.Fatalf("want rename form, got %v", m.screen)
+	}
+	m = send(t, m, submitFormMsg{value: "new title"})
+	if m.detail.ticket.Title != "new title" {
+		t.Fatalf("detail not updated: %q", m.detail.ticket.Title)
+	}
+
+	// Back to the board: it must show the new title, not the stale one.
+	m = send(t, m, keyEsc)
+	if m.screen != screenBoard {
+		t.Fatalf("want board, got %v", m.screen)
+	}
+	if got := m.board.columns[0][0].Title; got != "new title" {
+		t.Fatalf("board not refreshed: %q", got)
+	}
+}
