@@ -135,6 +135,28 @@ func (s *Service) List(ctx context.Context, projectKey string) ([]Ticket, error)
 	return s.tickets.ListByProject(ctx, s.db, proj.ID)
 }
 
+// Delete removes the ticket and (via DB cascade) its subtasks, comments,
+// attachment metadata, and activity; the FTS index is cleaned by the ticket
+// trigger. Attachment files on disk are not cleaned here — attachments aren't
+// yet creatable in the UI; mirror project deletion's file cleanup when they are.
+func (s *Service) Delete(ctx context.Context, key string) error {
+	pk, num, err := ParseKey(key)
+	if err != nil {
+		return err
+	}
+	return db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		proj, err := s.projects.GetByKey(ctx, tx, pk)
+		if err != nil {
+			return err
+		}
+		t, err := s.tickets.GetByProjectNumber(ctx, tx, proj.ID, num)
+		if err != nil {
+			return err
+		}
+		return s.tickets.Delete(ctx, tx, t.ID)
+	})
+}
+
 // mutate loads the ticket addressed by key, runs apply (which mutates the
 // ticket and records its event), and persists the row only if apply reports a
 // change. updated_at is bumped on change.

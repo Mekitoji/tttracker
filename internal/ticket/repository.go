@@ -60,6 +60,13 @@ func (Repository) Update(ctx context.Context, q db.DBTX, t *Ticket) error {
 	return err
 }
 
+// Delete removes a ticket; its subtasks/comments/attachments/activity cascade,
+// and the FTS index is cleaned by the AFTER DELETE trigger.
+func (Repository) Delete(ctx context.Context, q db.DBTX, id int64) error {
+	_, err := q.ExecContext(ctx, `DELETE FROM tickets WHERE id = ?`, id)
+	return err
+}
+
 func (Repository) GetByID(ctx context.Context, q db.DBTX, id int64) (*Ticket, error) {
 	row := q.QueryRowContext(ctx, `SELECT `+ticketCols+` FROM tickets WHERE id = ?`, id)
 	t, err := scanTicket(row)

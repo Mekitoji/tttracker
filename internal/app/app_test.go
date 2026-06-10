@@ -430,6 +430,43 @@ func TestDeleteProject(t *testing.T) {
 	}
 }
 
+func TestDeleteTicket(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "fix sqlite bug"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "keep me"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Subtasks.Add(ctx, "PET-1", "a subtask"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Comments.Add(ctx, "PET-1", "a comment"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Tickets.Delete(ctx, "PET-1"); err != nil {
+		t.Fatalf("delete ticket: %v", err)
+	}
+	if _, err := a.Tickets.Get(ctx, "PET-1"); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("ticket should be gone, got %v", err)
+	}
+	// FTS cleaned by the AFTER DELETE trigger.
+	if hits, _ := a.Tickets.Search(ctx, "sqlite"); len(hits) != 0 {
+		t.Fatalf("search should be empty after delete, got %d", len(hits))
+	}
+	// Children cascaded (the deleted ticket key no longer resolves).
+	if _, err := a.Subtasks.List(ctx, "PET-1"); err == nil {
+		t.Fatal("subtasks of a deleted ticket should not resolve")
+	}
+	// Sibling ticket survives.
+	if _, err := a.Tickets.Get(ctx, "PET-2"); err != nil {
+		t.Fatalf("sibling ticket should survive: %v", err)
+	}
+}
+
 // --- helpers ---
 
 func mustProject(t *testing.T, a *app.App, key string) {

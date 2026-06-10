@@ -97,6 +97,11 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 			}
 		case "p", "esc":
 			return m, func() tea.Msg { return backMsg{} }
+		case "x":
+			if t, ok := m.selected(); ok {
+				k := ticket.Key(m.projectKey, t.Number)
+				return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
+			}
 		case "q":
 			return m, tea.Quit
 		}
@@ -150,7 +155,7 @@ func (m boardModel) View() string {
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	help := helpStyle.Render("←/→ col • ↑/↓ ticket • enter open • m status • / search • n new • p projects • q")
+	help := helpStyle.Render("←/→ col • ↑/↓ ticket • enter open • m status • x del • / search • n new • p projects • q")
 	return header + "\n\n" + board + "\n\n" + help
 }
 
@@ -208,18 +213,4 @@ func labelChip(label string) string {
 	_, _ = h.Write([]byte(label))
 	bg := labelPalette[h.Sum32()%uint32(len(labelPalette))]
 	return labelStyle.Background(bg).Foreground(lipgloss.Color("232")).Render(label)
-}
-
-func truncate(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= w {
-		return s
-	}
-	if w == 1 {
-		return "…"
-	}
-	return string(r[:w-1]) + "…"
 }

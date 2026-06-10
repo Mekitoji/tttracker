@@ -62,6 +62,8 @@ type (
 	reposLoadedMsg      struct{ repos []string }
 	askDeleteProjectMsg struct{ key string }
 	deleteProjectMsg    struct{ key string }
+	askDeleteTicketMsg  struct{ key string }
+	deleteTicketMsg     struct{ key string }
 	submitFormMsg       struct{ value string }
 	startActionMsg      struct {
 		kind      actionKind
@@ -94,6 +96,7 @@ type model struct {
 	projectEdit   projectEditModel
 	projectCreate projectCreateModel
 	confirm       confirmModel
+	confirmReturn screen
 	finder        repoFinder
 
 	pending pendingState
@@ -173,7 +176,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenSearch:
 			m.screen = screenBoard
 		case screenConfirm:
-			m.screen = screenProjects
+			m.screen = m.confirmReturn
 		case screenProjectEdit:
 			if pm, err := newProjectsModel(m.app, m.ctx); err == nil {
 				m.projects = pm.setSize(m.width, m.height)
@@ -212,9 +215,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case askDeleteProjectMsg:
-		m.confirm = newConfirmDelete(msg.key)
+		key := msg.key
+		m.confirmReturn = m.screen
+		m.confirm = newConfirmType(
+			"Delete project "+key+" and ALL its tickets — this cannot be undone.",
+			key,
+			func() tea.Msg { return deleteProjectMsg{key: key} },
+		)
 		m.screen = screenConfirm
 		return m, textinput.Blink
+	case askDeleteTicketMsg:
+		key := msg.key
+		m.confirmReturn = m.screen
+		m.confirm = newConfirmYesNo(
+			"Delete ticket "+key+"? This cannot be undone.",
+			func() tea.Msg { return deleteTicketMsg{key: key} },
+		)
+		m.screen = screenConfirm
+		return m, nil
 	case deleteProjectMsg:
 		if err := m.app.Projects.Delete(m.ctx, msg.key); err != nil {
 			m.status = err.Error()
@@ -226,6 +244,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.projects = pm.setSize(m.width, m.height)
 		m.screen = screenProjects
+		return m, nil
+	case deleteTicketMsg:
+		if err := m.app.Tickets.Delete(m.ctx, msg.key); err != nil {
+			m.status = err.Error()
+		}
+		if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
+			bm.col, bm.row = m.board.col, m.board.row
+			bm.clampRow()
+			m.board = bm
+		}
+		m.screen = screenBoard
 		return m, nil
 	case submitFormMsg:
 		if m.screen == screenActionForm {

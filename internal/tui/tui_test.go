@@ -483,3 +483,84 @@ func TestBoardRefreshesAfterDetailEdit(t *testing.T) {
 		t.Fatalf("board not refreshed: %q", got)
 	}
 }
+
+func TestBoardDeleteTicketFlow(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+	m = send(t, m, keyEnter) // board
+
+	m = send(t, m, keyRunes("x")) // confirm delete selected (PET-1)
+	if m.screen != screenConfirm {
+		t.Fatalf("want confirm, got %v", m.screen)
+	}
+	m = send(t, m, keyRunes("y")) // confirm
+	if m.screen != screenBoard {
+		t.Fatalf("want board after delete, got %v", m.screen)
+	}
+	if got := len(m.board.columns[0]); got != 1 {
+		t.Fatalf("todo column should have 1 ticket left, got %d", got)
+	}
+	if m.board.columns[0][0].Title != "second" {
+		t.Fatalf("wrong ticket remains: %q", m.board.columns[0][0].Title)
+	}
+}
+
+func TestDetailDeleteTicketFlow(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "only one"}); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+	m = send(t, m, keyEnter) // board
+	m = send(t, m, keyEnter) // detail
+	if m.screen != screenDetail {
+		t.Fatalf("want detail, got %v", m.screen)
+	}
+
+	m = send(t, m, keyRunes("x")) // confirm delete the ticket
+	if m.screen != screenConfirm {
+		t.Fatalf("want confirm, got %v", m.screen)
+	}
+	m = send(t, m, keyRunes("y")) // confirm -> deleted, back to board
+	if m.screen != screenBoard {
+		t.Fatalf("want board after delete, got %v", m.screen)
+	}
+	if got := len(m.board.columns[0]); got != 0 {
+		t.Fatalf("todo column should be empty, got %d", got)
+	}
+}
+
+func TestDeleteTicketConfirmCancel(t *testing.T) {
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "keep"}); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+	m = send(t, m, keyEnter)      // board
+	m = send(t, m, keyRunes("x")) // confirm
+	m = send(t, m, keyRunes("n")) // cancel -> back to where we came from (board)
+	if m.screen != screenBoard {
+		t.Fatalf("cancel should return to board, got %v", m.screen)
+	}
+	if len(m.board.columns[0]) != 1 {
+		t.Fatalf("ticket should remain after cancel, got %d", len(m.board.columns[0]))
+	}
+}

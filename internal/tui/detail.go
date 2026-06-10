@@ -115,6 +115,9 @@ func (m detailModel) Update(msg tea.Msg) (detailModel, tea.Cmd) {
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentDelete, c.ID, "")
 		}
+	case "x":
+		key := m.key
+		return m, func() tea.Msg { return askDeleteTicketMsg{key: key} }
 	case "q", "esc":
 		return m, func() tea.Msg { return backMsg{} }
 	}
@@ -191,7 +194,7 @@ func (m detailModel) View() string {
 	))
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render(
-		"↑/↓ select • ␣ toggle • R rename-sub • enter edit-comment • d delete • q back",
+		"↑/↓ select • ␣ toggle • R rename-sub • enter edit-comment • d delete • x del-ticket • q back",
 	))
 	return b.String()
 }
