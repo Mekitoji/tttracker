@@ -133,7 +133,7 @@ func TestCreateProjectAndTicketFlow(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("want board after create, got %v", m.screen)
 	}
-	if got := len(m.board.columns[0]); got != 1 {
+	if got := len(m.board.columns[1]); got != 1 {
 		t.Fatalf("todo column should have 1 ticket, got %d", got)
 	}
 }
@@ -187,7 +187,7 @@ func TestStatusChangeFromBoard(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("want board, got %v", m.screen)
 	}
-	if got := len(m.board.columns[0]); got != 0 { // todo
+	if got := len(m.board.columns[1]); got != 0 { // todo
 		t.Fatalf("todo column should be empty, got %d", got)
 	}
 	if got := len(m.board.columns[3]); got != 1 { // done
@@ -479,7 +479,7 @@ func TestBoardRefreshesAfterDetailEdit(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("want board, got %v", m.screen)
 	}
-	if got := m.board.columns[0][0].Title; got != "new title" {
+	if got := m.board.columns[1][0].Title; got != "new title" {
 		t.Fatalf("board not refreshed: %q", got)
 	}
 }
@@ -507,11 +507,11 @@ func TestBoardDeleteTicketFlow(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("want board after delete, got %v", m.screen)
 	}
-	if got := len(m.board.columns[0]); got != 1 {
+	if got := len(m.board.columns[1]); got != 1 {
 		t.Fatalf("todo column should have 1 ticket left, got %d", got)
 	}
-	if m.board.columns[0][0].Title != "second" {
-		t.Fatalf("wrong ticket remains: %q", m.board.columns[0][0].Title)
+	if m.board.columns[1][0].Title != "second" {
+		t.Fatalf("wrong ticket remains: %q", m.board.columns[1][0].Title)
 	}
 }
 
@@ -539,7 +539,7 @@ func TestDetailDeleteTicketFlow(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("want board after delete, got %v", m.screen)
 	}
-	if got := len(m.board.columns[0]); got != 0 {
+	if got := len(m.board.columns[1]); got != 0 {
 		t.Fatalf("todo column should be empty, got %d", got)
 	}
 }
@@ -560,8 +560,8 @@ func TestDeleteTicketConfirmCancel(t *testing.T) {
 	if m.screen != screenBoard {
 		t.Fatalf("cancel should return to board, got %v", m.screen)
 	}
-	if len(m.board.columns[0]) != 1 {
-		t.Fatalf("ticket should remain after cancel, got %d", len(m.board.columns[0]))
+	if len(m.board.columns[1]) != 1 {
+		t.Fatalf("ticket should remain after cancel, got %d", len(m.board.columns[1]))
 	}
 }
 

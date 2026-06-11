@@ -16,9 +16,9 @@ import (
 )
 
 // boardStatuses is the set (and order) of columns shown on the board; archived
-// tickets are intentionally omitted.
+// tickets are intentionally omitted. Blocked is first (can be toggled hidden).
 var boardStatuses = []ticket.Status{
-	ticket.StatusTodo, ticket.StatusInProgress, ticket.StatusBlocked, ticket.StatusDone,
+	ticket.StatusBlocked, ticket.StatusTodo, ticket.StatusInProgress, ticket.StatusDone,
 }
 
 var boardTitles = map[ticket.Status]string{
@@ -35,6 +35,8 @@ type boardModel struct {
 	col, row    int
 	width       int
 	height      int
+	showBlocked bool  // toggle visibility of blocked column
+	visibleCols []int // indices of visible columns in boardStatuses
 }
 
 func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int) (boardModel, error) {
@@ -55,7 +57,23 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 			}
 		}
 	}
-	return boardModel{projectKey: projectKey, projectName: proj.Name, columns: cols, width: w, height: h}, nil
+	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: cols, width: w, height: h, showBlocked: false, col: 0, row: 0}
+	bm.updateVisibleCols()
+	// Start at first primary column (todo, index 1 in boardStatuses)
+	bm.col = bm.visibleCols[0]
+	bm.clampRow()
+	return bm, nil
+}
+
+// updateVisibleCols builds the list of visible column indices based on showBlocked
+func (m *boardModel) updateVisibleCols() {
+	m.visibleCols = nil
+	for i, st := range boardStatuses {
+		if st == ticket.StatusBlocked && !m.showBlocked {
+			continue
+		}
+		m.visibleCols = append(m.visibleCols, i)
+	}
 }
 
 func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
@@ -65,13 +83,15 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(km, keys.Left):
-		if m.col > 0 {
-			m.col--
+		visIdx := m.visibleColIndex(m.col)
+		if visIdx > 0 {
+			m.col = m.visibleCols[visIdx-1]
 			m.clampRow()
 		}
 	case key.Matches(km, keys.Right):
-		if m.col < len(boardStatuses)-1 {
-			m.col++
+		visIdx := m.visibleColIndex(m.col)
+		if visIdx >= 0 && visIdx < len(m.visibleCols)-1 {
+			m.col = m.visibleCols[visIdx+1]
 			m.clampRow()
 		}
 	case key.Matches(km, keys.Up):
@@ -101,16 +121,20 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 		}
 	case key.Matches(km, keys.BoardMoveTicketLeft):
 		if t, ok := m.selected(); ok {
-			if m.col > 0 {
-				newStatus := string(boardStatuses[m.col-1])
+			visIdx := m.visibleColIndex(m.col)
+			if visIdx > 0 {
+				newStatusIdx := m.visibleCols[visIdx-1]
+				newStatus := string(boardStatuses[newStatusIdx])
 				k := ticket.Key(m.projectKey, t.Number)
 				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
 			}
 		}
 	case key.Matches(km, keys.BoardMoveTicketRight):
 		if t, ok := m.selected(); ok {
-			if m.col < len(boardStatuses)-1 {
-				newStatus := string(boardStatuses[m.col+1])
+			visIdx := m.visibleColIndex(m.col)
+			if visIdx >= 0 && visIdx < len(m.visibleCols)-1 {
+				newStatusIdx := m.visibleCols[visIdx+1]
+				newStatus := string(boardStatuses[newStatusIdx])
 				k := ticket.Key(m.projectKey, t.Number)
 				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
 			}
@@ -122,6 +146,15 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 		}
 	case key.Matches(km, keys.BoardProjects), key.Matches(km, keys.Back):
 		return m, func() tea.Msg { return backMsg{} }
+	case key.Matches(km, keys.BoardToggleBlocked):
+		m.showBlocked = !m.showBlocked
+		m.updateVisibleCols()
+		// clamp col to visible range
+		visIdx := m.visibleColIndex(m.col)
+		if visIdx < 0 || visIdx >= len(m.visibleCols) {
+			m.col = m.visibleCols[0]
+		}
+		m.clampRow()
 	case key.Matches(km, keys.Quit):
 		return m, tea.Quit
 	}
@@ -161,34 +194,58 @@ func (m *boardModel) focusTicket(number int) bool {
 	return false
 }
 
+// visibleColIndex returns the index of col in visibleCols, or -1 if not visible
+func (m boardModel) visibleColIndex(col int) int {
+	for i, vc := range m.visibleCols {
+		if vc == col {
+			return i
+		}
+	}
+	return -1
+}
+
 func (m boardModel) View() string {
 	header := titleStyle.Render(fmt.Sprintf("%s — %s", m.projectKey, m.projectName))
 
-	innerW := max(m.width/len(boardStatuses)-4, 16)
+	// Calculate width per visible column (border: 2 chars, padding: 2 chars)
+	totalBorderPadding := 4
+	innerW := max((m.width/len(m.visibleCols))-totalBorderPadding-2, 14)
+	// Account for header and help lines
+	contentHeight := max(m.height-7, 8)
 
-	cols := make([]string, len(boardStatuses))
-	for i, st := range boardStatuses {
+	cols := make([]string, len(m.visibleCols))
+	for visIdx, colIdx := range m.visibleCols {
+		st := boardStatuses[colIdx]
 		var b strings.Builder
 		b.WriteString(columnTitleStyle.Render(boardTitles[st]))
-		b.WriteString("\n\n")
-		if len(m.columns[i]) == 0 {
+		b.WriteString("\n")
+
+		if len(m.columns[colIdx]) == 0 {
 			b.WriteString(helpStyle.Render("—"))
+		} else {
+			for j, t := range m.columns[colIdx] {
+				selected := colIdx == m.col && j == m.row
+				b.WriteString(renderCard(t, selected, innerW))
+				b.WriteString("\n")
+			}
 		}
-		for j, t := range m.columns[i] {
-			selected := i == m.col && j == m.row
-			b.WriteString(renderCard(t, selected, innerW))
+
+		// Pad with empty lines to fill the height
+		lines := len(strings.Split(strings.TrimRight(b.String(), "\n"), "\n"))
+		for i := lines; i < contentHeight; i++ {
 			b.WriteString("\n")
 		}
+
 		style := columnStyle
-		if i == m.col {
+		if colIdx == m.col {
 			style = columnSelStyle
 		}
-		cols[i] = style.Width(innerW).Render(b.String())
+		cols[visIdx] = style.Width(innerW).Render(b.String())
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	help := helpLine(keys.Left, keys.Up, keys.Open, keys.BoardMoveTicketLeft, keys.BoardMoveStatus, keys.BoardDeleteTicket,
-		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.Quit)
+		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.BoardToggleBlocked, keys.Quit)
 	return header + "\n\n" + board + "\n\n" + help
 }
 

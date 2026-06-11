@@ -15,6 +15,7 @@
     "board_delete_ticket": ["x"],
     "board_search": ["/"],
     "board_projects": ["p"],
+    "board_toggle_blocked": ["!"],
     "detail_set_priority": ["p"],
     "detail_set_type": ["t"],
     "detail_edit_title": ["r"],
