@@ -153,7 +153,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board, m.status, m.screen = bm, "", screenBoard
 		return m, nil
 	case openTicketMsg:
-		dm, err := newDetailModel(m.app, m.ctx, msg.key, m.width, m.height)
+		dm, err := loadDetail(m.app, m.ctx, msg.key, m.width, m.height)
 		if err != nil {
 			m.status = err.Error()
 			return m, nil
@@ -461,7 +461,6 @@ func (m model) applyPending(value string) (tea.Model, tea.Cmd) {
 func (m model) finishAction(err error) (tea.Model, tea.Cmd) {
 	origin := m.pending.origin
 	ticketKey := m.pending.ticketKey
-	cursor := m.detail.cursor
 	m.pending = pendingState{}
 
 	if err != nil {
@@ -482,26 +481,14 @@ func (m model) finishAction(err error) (tea.Model, tea.Cmd) {
 			m.board = bm
 		}
 	case screenDetail:
-		if dm, e := newDetailModel(m.app, m.ctx, ticketKey, m.width, m.height); e != nil {
+		if dm, e := m.detail.reload(m.app, m.ctx); e != nil {
 			m.status = e.Error()
 		} else {
-			dm.cursor = clampCursor(cursor, len(dm.subtasks)+len(dm.comments))
 			m.detail = dm
 		}
 	}
 	m.screen = origin
 	return m, nil
-}
-
-func clampCursor(c, n int) int {
-	switch {
-	case n == 0 || c < 0:
-		return 0
-	case c > n-1:
-		return n - 1
-	default:
-		return c
-	}
 }
 
 // parseLabels splits a comma-separated label string into a trimmed, non-empty list.

@@ -9,7 +9,7 @@ import (
 
 // Allowed values for the enum pickers; these mirror the ticket package enums.
 var (
-	statusValues   = []string{"todo", "in_progress", "blocked", "done", "archived"}
+	statusValues   = []string{"backlog", "todo", "in_progress", "blocked", "done", "archived"}
 	priorityValues = []string{"low", "medium", "high", "critical"}
 	typeValues     = []string{"task", "bug", "idea", "chore"}
 )

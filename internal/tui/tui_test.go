@@ -668,3 +668,84 @@ func TestMoveTicketKeyKeepsBlockedView(t *testing.T) {
 		t.Fatalf("focus not on moved ticket in blocked: %+v ok=%v", got, ok)
 	}
 }
+
+// Attachment display and navigation in detail view.
+func TestDetailShowsAttachments(t *testing.T) {
+	a := newTestApp(t)
+	mustSeed(t, a)
+	ctx := context.Background()
+
+	// Attach a file to PET-1.
+	att, err := a.Attachments.Attach(ctx, "PET-1", "/etc/hosts")
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+
+	// Open detail view.
+	m := openDetail(t, a)
+	if m.screen != screenDetail {
+		t.Fatalf("want detail, got %v", m.screen)
+	}
+
+	// Check attachment is in the detail model.
+	if len(m.detail.attachments) != 1 {
+		t.Fatalf("want 1 attachment, got %d", len(m.detail.attachments))
+	}
+	if m.detail.attachments[0].FileName != att.FileName {
+		t.Fatalf("want %s, got %s", att.FileName, m.detail.attachments[0].FileName)
+	}
+
+	// Navigate to attachment with down arrow.
+	// Start at cursor 0 (first subtask); no subtasks, so cursor lands at comments offset 0;
+	// no comments, so lands at attachments offset 0.
+	for i := 0; i < 2; i++ { // down twice to be sure
+		m = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	// Check we can select the attachment.
+	if att, ok := m.detail.selAtt(); !ok {
+		t.Fatalf("could not select attachment")
+	} else if att.ID != att.ID {
+		t.Fatalf("selected wrong attachment")
+	}
+}
+
+// Regression: an action in the detail view (toggle/edit) must keep the cursor on
+// the same item instead of resetting it to the top after the reload.
+func TestDetailCursorPreservedAcrossAction(t *testing.T) {
+	a := newTestApp(t)
+	mustSeed(t, a)
+	m := openDetail(t, a)
+
+	// Add three subtasks.
+	for _, title := range []string{"one", "two", "three"} {
+		m = send(t, m, keyRunes("s"))
+		m = send(t, m, submitFormMsg{value: title})
+	}
+	if len(m.detail.subtasks) != 3 {
+		t.Fatalf("want 3 subtasks, got %d", len(m.detail.subtasks))
+	}
+
+	// Move cursor to the third subtask (index 2).
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.detail.cursor != 2 {
+		t.Fatalf("want cursor 2, got %d", m.detail.cursor)
+	}
+	sel, ok := m.detail.selSub()
+	if !ok || sel.Title != "three" {
+		t.Fatalf("want 'three' selected, got %+v ok=%v", sel, ok)
+	}
+
+	// Toggle it; after the reload the cursor must still be on the third subtask.
+	m = send(t, m, tea.KeyMsg{Type: tea.KeySpace})
+	if m.detail.cursor != 2 {
+		t.Fatalf("cursor reset after action: got %d, want 2", m.detail.cursor)
+	}
+	sel, ok = m.detail.selSub()
+	if !ok || sel.Title != "three" {
+		t.Fatalf("cursor not on 'three' after action: %+v ok=%v", sel, ok)
+	}
+	if !sel.IsDone {
+		t.Fatal("third subtask should be toggled done")
+	}
+}
