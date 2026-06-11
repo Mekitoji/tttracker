@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -33,30 +34,30 @@ func newConfirmYesNo(title string, onYes tea.Cmd) confirmModel {
 }
 
 func (m confirmModel) Update(msg tea.Msg) (confirmModel, tea.Cmd) {
-	k, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
 	}
 
 	if m.expect == "" { // y/n mode
-		switch k.String() {
-		case "y", "Y":
+		switch {
+		case key.Matches(km, keys.ConfirmYes):
 			return m, m.onYes
-		case "n", "N", "esc", "q":
+		case key.Matches(km, keys.ConfirmNo), key.Matches(km, keys.Back), key.Matches(km, keys.Quit):
 			return m, func() tea.Msg { return backMsg{} }
 		}
 		return m, nil
 	}
 
 	// type-to-confirm mode
-	switch k.Type {
-	case tea.KeyEnter:
+	switch {
+	case key.Matches(km, keys.Open):
 		if strings.TrimSpace(m.input.Value()) == m.expect {
 			return m, m.onYes
 		}
 		m.errMsg = "type the key exactly to confirm"
 		return m, nil
-	case tea.KeyEsc:
+	case key.Matches(km, keys.Back):
 		return m, func() tea.Msg { return backMsg{} }
 	}
 	var cmd tea.Cmd
@@ -69,7 +70,7 @@ func (m confirmModel) View() string {
 	b.WriteString(errorStyle.Render(m.title))
 	b.WriteString("\n\n")
 	if m.expect == "" {
-		b.WriteString(helpStyle.Render("y confirm • n/esc cancel"))
+		b.WriteString(helpLine(keys.ConfirmYes, keys.ConfirmNo))
 		return b.String()
 	}
 	b.WriteString("Type the key to confirm:\n")
@@ -81,6 +82,6 @@ func (m confirmModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("enter confirm • esc cancel"))
+	b.WriteString(helpLine(keys.Open, keys.Back))
 	return b.String()
 }

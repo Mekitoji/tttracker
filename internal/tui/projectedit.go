@@ -87,20 +87,20 @@ func (m projectEditModel) Update(msg tea.Msg) (projectEditModel, tea.Cmd) {
 }
 
 func (m projectEditModel) updateMenu(msg tea.Msg) (projectEditModel, tea.Cmd) {
-	k, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
 	}
-	switch k.String() {
-	case "up", "k":
+	switch {
+	case key.Matches(km, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
 		}
-	case "down", "j":
+	case key.Matches(km, keys.Down):
 		if m.cursor < len(peFields)-1 {
 			m.cursor++
 		}
-	case "enter":
+	case key.Matches(km, keys.Open):
 		m.errMsg = ""
 		switch m.cursor {
 		case 0:
@@ -114,7 +114,7 @@ func (m projectEditModel) updateMenu(msg tea.Msg) (projectEditModel, tea.Cmd) {
 			m.mode = peDesc
 			return m, textinput.Blink
 		}
-	case "esc", "q":
+	case key.Matches(km, keys.Back), key.Matches(km, keys.Quit):
 		return m, func() tea.Msg { return backMsg{} }
 	}
 	return m, nil
@@ -151,15 +151,15 @@ func (m projectEditModel) openPicker() (projectEditModel, tea.Cmd) {
 }
 
 func (m projectEditModel) updatePicker(msg tea.Msg) (projectEditModel, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
-		switch k.String() {
-		case "esc":
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Back):
 			m.mode = peMenu
 			return m, nil
-		case ".":
+		case key.Matches(km, keys.ToggleHidden):
 			m.picker.ShowHidden = !m.picker.ShowHidden
 			return m, m.picker.Init()
-		case "i", "tab":
+		case key.Matches(km, keys.ManualEntry):
 			return m.openManual()
 		}
 	}
@@ -201,23 +201,23 @@ func (m projectEditModel) setRepos(repos []string) projectEditModel {
 }
 
 func (m projectEditModel) updateManualRepo(msg tea.Msg) (projectEditModel, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
-		switch k.String() {
-		case "esc":
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Back):
 			m.mode = peRepoPick
 			m.errMsg = ""
 			return m, nil
-		case "down", "ctrl+j":
+		case key.Matches(km, keys.ResultsDown):
 			if m.resCursor < len(m.results)-1 {
 				m.resCursor++
 			}
 			return m, nil
-		case "up", "ctrl+k":
+		case key.Matches(km, keys.ResultsUp):
 			if m.resCursor > -1 {
 				m.resCursor--
 			}
 			return m, nil
-		case "enter":
+		case key.Matches(km, keys.Open):
 			if m.resCursor >= 0 && m.resCursor < len(m.results) {
 				return m.saveRepoPath(m.results[m.resCursor]), nil
 			}
@@ -235,11 +235,11 @@ func (m projectEditModel) updateManualRepo(msg tea.Msg) (projectEditModel, tea.C
 }
 
 func (m projectEditModel) updateInput(msg tea.Msg) (projectEditModel, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
-		switch k.Type {
-		case tea.KeyEnter:
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Open):
 			return m.submitInput(), nil
-		case tea.KeyEsc:
+		case key.Matches(km, keys.Back):
 			m.mode = peMenu
 			m.errMsg = ""
 			return m, nil
@@ -318,7 +318,7 @@ func (m projectEditModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓ • enter edit • esc back   (KEY is fixed)"))
+	b.WriteString(helpLine(keys.Up, keys.Open, keys.Back))
 	return b.String()
 }
 
@@ -334,7 +334,7 @@ func (m projectEditModel) inputView(title string) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("enter save • esc cancel"))
+	b.WriteString(helpLine(keys.Open, keys.Back))
 	return b.String()
 }
 
@@ -368,7 +368,7 @@ func (m projectEditModel) manualView() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("type to filter • ↑/↓ or ⌃j/⌃k pick • enter select / use typed • esc back"))
+	b.WriteString(helpLine(keys.ResultsUp, keys.Open, keys.Back))
 	return b.String()
 }
 
@@ -386,7 +386,9 @@ func (m projectEditModel) pickerView() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓ move • → open • ← up • enter select dir • . hidden • i search • esc cancel"))
+	b.WriteString(helpStyle.Render("↑/↓ move • → open • ← up • enter select dir"))
+	b.WriteString("\n")
+	b.WriteString(helpLine(keys.ToggleHidden, keys.ManualEntry, keys.Back))
 	return b.String()
 }
 

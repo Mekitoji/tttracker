@@ -68,7 +68,7 @@ func (f execRepoFinder) allRepos() []string {
 func reposFromGitDirs(output string) []string {
 	seen := make(map[string]bool)
 	var repos []string
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

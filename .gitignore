@@ -1,5 +1,6 @@
 # Binaries
 /tracker
+/tttracker
 /tracker.exe
 *.test
 *.out

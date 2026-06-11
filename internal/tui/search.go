@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -32,21 +33,21 @@ func newSearchModel(a *app.App, ctx context.Context, w, h int) searchModel {
 }
 
 func (m searchModel) Update(msg tea.Msg) (searchModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "esc":
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Back):
 			return m, func() tea.Msg { return backMsg{} }
-		case "up", "ctrl+k":
+		case key.Matches(km, keys.ResultsUp):
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			return m, nil
-		case "down", "ctrl+j":
+		case key.Matches(km, keys.ResultsDown):
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
 			}
 			return m, nil
-		case "enter":
+		case key.Matches(km, keys.Open):
 			if h, ok := m.selected(); ok {
 				k := ticket.Key(h.ProjectKey, h.Ticket.Number)
 				return m, func() tea.Msg { return openTicketMsg{key: k} }
@@ -94,7 +95,7 @@ func (m searchModel) View() string {
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("type to search • ↑/↓ or ⌃j/⌃k • enter open • esc back"))
+	b.WriteString(helpLine(keys.ResultsUp, keys.Open, keys.Back))
 	return b.String()
 }
 

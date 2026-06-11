@@ -40,6 +40,9 @@ func DBPath(dataDir string) string { return filepath.Join(dataDir, "app.db") }
 // AttachmentsDir returns the attachments root inside dataDir.
 func AttachmentsDir(dataDir string) string { return filepath.Join(dataDir, "attachments") }
 
+// KeysPath returns the (optional) keybindings config file inside dataDir.
+func KeysPath(dataDir string) string { return filepath.Join(dataDir, "keys.json") }
+
 // EnsureLayout creates dataDir and its attachments subdirectory.
 func EnsureLayout(dataDir string) error {
 	return os.MkdirAll(AttachmentsDir(dataDir), 0o755)

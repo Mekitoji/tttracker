@@ -564,3 +564,30 @@ func TestDeleteTicketConfirmCancel(t *testing.T) {
 		t.Fatalf("ticket should remain after cancel, got %d", len(m.board.columns[0]))
 	}
 }
+
+func TestBoardUsesConfiguredDeleteKey(t *testing.T) {
+	orig := keys
+	t.Cleanup(func() { keys = orig })
+	keys.DeleteTicket = bind([]string{"D"}, "D", "del") // rebind delete to D
+
+	a := newTestApp(t)
+	ctx := context.Background()
+	if _, err := a.Projects.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestModel(t, a)
+	m = send(t, m, keyEnter) // board
+
+	// The old key no longer deletes.
+	if got := send(t, m, keyRunes("x")); got.screen == screenConfirm {
+		t.Fatal("unbound key x should not trigger delete")
+	}
+	// The configured key does.
+	m = send(t, m, keyRunes("D"))
+	if m.screen != screenConfirm {
+		t.Fatalf("configured delete key should open confirm, got %v", m.screen)
+	}
+}

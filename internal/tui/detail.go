@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 
@@ -67,58 +68,58 @@ func (m detailModel) selCom() (comment.Comment, bool) {
 }
 
 func (m detailModel) Update(msg tea.Msg) (detailModel, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
 	}
-	switch key.String() {
-	case "up", "k":
+	switch {
+	case key.Matches(km, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
 		}
-	case "down", "j":
+	case key.Matches(km, keys.Down):
 		if m.cursor < m.total()-1 {
 			m.cursor++
 		}
-	case "m":
+	case key.Matches(km, keys.MoveStatus):
 		return m, m.action(actionStatus, 0, string(m.ticket.Status))
-	case "p":
+	case key.Matches(km, keys.SetPriority):
 		return m, m.action(actionPriority, 0, string(m.ticket.Priority))
-	case "t":
+	case key.Matches(km, keys.SetType):
 		return m, m.action(actionType, 0, string(m.ticket.Type))
-	case "r":
+	case key.Matches(km, keys.EditTitle):
 		return m, m.action(actionTitle, 0, m.ticket.Title)
-	case "l":
+	case key.Matches(km, keys.EditLabels):
 		return m, m.action(actionLabels, 0, strings.Join(m.ticket.Labels, ", "))
-	case "e":
+	case key.Matches(km, keys.EditDescription):
 		return m, m.action(actionDescription, 0, "")
-	case "c":
+	case key.Matches(km, keys.AddComment):
 		return m, m.action(actionComment, 0, "")
-	case "s":
+	case key.Matches(km, keys.AddSubtask):
 		return m, m.action(actionSubtaskAdd, 0, "")
-	case " ":
+	case key.Matches(km, keys.ToggleSubtask):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskToggle, st.ID, "")
 		}
-	case "R":
+	case key.Matches(km, keys.RenameSubtask):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskRename, st.ID, st.Title)
 		}
-	case "enter":
+	case key.Matches(km, keys.EditComment):
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentEdit, c.ID, c.Body)
 		}
-	case "d":
+	case key.Matches(km, keys.DeleteItem):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskDelete, st.ID, "")
 		}
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentDelete, c.ID, "")
 		}
-	case "x":
-		key := m.key
-		return m, func() tea.Msg { return askDeleteTicketMsg{key: key} }
-	case "q", "esc":
+	case key.Matches(km, keys.DeleteTicket):
+		k := m.key
+		return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
+	case key.Matches(km, keys.Back), key.Matches(km, keys.Quit):
 		return m, func() tea.Msg { return backMsg{} }
 	}
 	return m, nil
@@ -189,13 +190,11 @@ func (m detailModel) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render(
-		"m status • p prio • t type • r rename • l labels • e desc • s +subtask • c +comment",
-	))
+	b.WriteString(helpLine(keys.MoveStatus, keys.SetPriority, keys.SetType, keys.EditTitle,
+		keys.EditLabels, keys.EditDescription, keys.AddSubtask, keys.AddComment))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render(
-		"↑/↓ select • ␣ toggle • R rename-sub • enter edit-comment • d delete • x del-ticket • q back",
-	))
+	b.WriteString(helpLine(keys.Up, keys.ToggleSubtask, keys.RenameSubtask, keys.EditComment,
+		keys.DeleteItem, keys.DeleteTicket, keys.Back))
 	return b.String()
 }
 

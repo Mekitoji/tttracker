@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -58,53 +59,55 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 }
 
 func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "left", "h":
-			if m.col > 0 {
-				m.col--
-				m.clampRow()
-			}
-		case "right", "l":
-			if m.col < len(boardStatuses)-1 {
-				m.col++
-				m.clampRow()
-			}
-		case "up", "k":
-			if m.row > 0 {
-				m.row--
-			}
-		case "down", "j":
-			if m.row < len(m.columns[m.col])-1 {
-				m.row++
-			}
-		case "enter":
-			if t, ok := m.selected(); ok {
-				k := ticket.Key(m.projectKey, t.Number)
-				return m, func() tea.Msg { return openTicketMsg{key: k} }
-			}
-		case "/":
-			return m, func() tea.Msg { return openSearchMsg{} }
-		case "n":
-			return m, func() tea.Msg { return newTicketFormMsg{} }
-		case "m":
-			if t, ok := m.selected(); ok {
-				k := ticket.Key(m.projectKey, t.Number)
-				cur := string(t.Status)
-				return m, func() tea.Msg {
-					return startActionMsg{kind: actionStatus, ticketKey: k, current: cur, origin: screenBoard}
-				}
-			}
-		case "p", "esc":
-			return m, func() tea.Msg { return backMsg{} }
-		case "x":
-			if t, ok := m.selected(); ok {
-				k := ticket.Key(m.projectKey, t.Number)
-				return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
-			}
-		case "q":
-			return m, tea.Quit
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case key.Matches(km, keys.Left):
+		if m.col > 0 {
+			m.col--
+			m.clampRow()
 		}
+	case key.Matches(km, keys.Right):
+		if m.col < len(boardStatuses)-1 {
+			m.col++
+			m.clampRow()
+		}
+	case key.Matches(km, keys.Up):
+		if m.row > 0 {
+			m.row--
+		}
+	case key.Matches(km, keys.Down):
+		if m.row < len(m.columns[m.col])-1 {
+			m.row++
+		}
+	case key.Matches(km, keys.Open):
+		if t, ok := m.selected(); ok {
+			k := ticket.Key(m.projectKey, t.Number)
+			return m, func() tea.Msg { return openTicketMsg{key: k} }
+		}
+	case key.Matches(km, keys.Search):
+		return m, func() tea.Msg { return openSearchMsg{} }
+	case key.Matches(km, keys.NewTicket):
+		return m, func() tea.Msg { return newTicketFormMsg{} }
+	case key.Matches(km, keys.MoveStatus):
+		if t, ok := m.selected(); ok {
+			k := ticket.Key(m.projectKey, t.Number)
+			cur := string(t.Status)
+			return m, func() tea.Msg {
+				return startActionMsg{kind: actionStatus, ticketKey: k, current: cur, origin: screenBoard}
+			}
+		}
+	case key.Matches(km, keys.DeleteTicket):
+		if t, ok := m.selected(); ok {
+			k := ticket.Key(m.projectKey, t.Number)
+			return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
+		}
+	case key.Matches(km, keys.Projects), key.Matches(km, keys.Back):
+		return m, func() tea.Msg { return backMsg{} }
+	case key.Matches(km, keys.Quit):
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -155,7 +158,8 @@ func (m boardModel) View() string {
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	help := helpStyle.Render("←/→ col • ↑/↓ ticket • enter open • m status • x del • / search • n new • p projects • q")
+	help := helpLine(keys.Left, keys.Up, keys.Open, keys.MoveStatus, keys.DeleteTicket,
+		keys.Search, keys.NewTicket, keys.Projects, keys.Quit)
 	return header + "\n\n" + board + "\n\n" + help
 }
 

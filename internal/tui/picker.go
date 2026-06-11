@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -34,22 +35,24 @@ func newPicker(title string, options []string, current string) pickerModel {
 }
 
 func (m pickerModel) Update(msg tea.Msg) (pickerModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
-			}
-		case "enter":
-			v := m.options[m.cursor]
-			return m, func() tea.Msg { return pickedMsg{value: v} }
-		case "esc", "q":
-			return m, func() tea.Msg { return backMsg{} }
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case key.Matches(km, keys.Up):
+		if m.cursor > 0 {
+			m.cursor--
 		}
+	case key.Matches(km, keys.Down):
+		if m.cursor < len(m.options)-1 {
+			m.cursor++
+		}
+	case key.Matches(km, keys.Open):
+		v := m.options[m.cursor]
+		return m, func() tea.Msg { return pickedMsg{value: v} }
+	case key.Matches(km, keys.Back), key.Matches(km, keys.Quit):
+		return m, func() tea.Msg { return backMsg{} }
 	}
 	return m, nil
 }
@@ -69,6 +72,6 @@ func (m pickerModel) View() string {
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓ • enter select • esc cancel"))
+	b.WriteString(helpLine(keys.Up, keys.Open, keys.Back))
 	return b.String()
 }

@@ -106,7 +106,8 @@ type model struct {
 }
 
 // Run launches the terminal UI over the given application facade.
-func Run(application *app.App) error {
+func Run(application *app.App, keysPath string) error {
+	keys = LoadKeyMap(keysPath)
 	ctx := context.Background()
 	pm, err := newProjectsModel(application, ctx)
 	if err != nil {

@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -30,11 +31,11 @@ func newProjectCreate() projectCreateModel {
 }
 
 func (m projectCreateModel) Update(msg tea.Msg) (projectCreateModel, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
-		switch k.String() {
-		case "esc":
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Back):
 			return m, func() tea.Msg { return backMsg{} }
-		case "tab", "down", "shift+tab", "up":
+		case key.Matches(km, keys.NextField), key.Matches(km, keys.PrevField):
 			m.focus = 1 - m.focus
 			if m.focus == 0 {
 				m.keyInput.Focus()
@@ -44,10 +45,10 @@ func (m projectCreateModel) Update(msg tea.Msg) (projectCreateModel, tea.Cmd) {
 				m.keyInput.Blur()
 			}
 			return m, textinput.Blink
-		case "enter":
-			key := strings.TrimSpace(m.keyInput.Value())
-			name := strings.TrimSpace(m.nameInput.Value())
-			return m, func() tea.Msg { return createProjectMsg{key: key, name: name} }
+		case key.Matches(km, keys.Open):
+			k := strings.TrimSpace(m.keyInput.Value())
+			n := strings.TrimSpace(m.nameInput.Value())
+			return m, func() tea.Msg { return createProjectMsg{key: k, name: n} }
 		}
 	}
 
@@ -78,7 +79,7 @@ func (m projectCreateModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("tab switch field • enter create • esc cancel"))
+	b.WriteString(helpLine(keys.NextField, keys.Open, keys.Back))
 	return b.String()
 }
 

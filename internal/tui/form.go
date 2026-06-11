@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -33,11 +34,11 @@ func prefilledForm(title, placeholder, value string) formModel {
 }
 
 func (m formModel) Update(msg tea.Msg) (formModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.Type {
-		case tea.KeyEnter:
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch {
+		case key.Matches(km, keys.Open):
 			return m, func() tea.Msg { return submitFormMsg{value: strings.TrimSpace(m.input.Value())} }
-		case tea.KeyEsc:
+		case key.Matches(km, keys.Back):
 			return m, func() tea.Msg { return backMsg{} }
 		}
 	}
@@ -58,7 +59,7 @@ func (m formModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("enter submit • esc cancel"))
+	b.WriteString(helpLine(keys.Open, keys.Back))
 	return b.String()
 }
 

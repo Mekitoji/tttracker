@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"tttracker/internal/app"
@@ -26,36 +27,38 @@ func newProjectsModel(a *app.App, ctx context.Context) (projectsModel, error) {
 }
 
 func (m projectsModel) Update(msg tea.Msg) (projectsModel, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.projects)-1 {
-				m.cursor++
-			}
-		case "enter":
-			if len(m.projects) > 0 {
-				k := m.projects[m.cursor].Key
-				return m, func() tea.Msg { return openProjectMsg{key: k} }
-			}
-		case "n":
-			return m, func() tea.Msg { return newProjectFormMsg{} }
-		case "e":
-			if len(m.projects) > 0 {
-				k := m.projects[m.cursor].Key
-				return m, func() tea.Msg { return openProjectEditMsg{key: k} }
-			}
-		case "x":
-			if len(m.projects) > 0 {
-				k := m.projects[m.cursor].Key
-				return m, func() tea.Msg { return askDeleteProjectMsg{key: k} }
-			}
-		case "q":
-			return m, tea.Quit
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case key.Matches(km, keys.Up):
+		if m.cursor > 0 {
+			m.cursor--
 		}
+	case key.Matches(km, keys.Down):
+		if m.cursor < len(m.projects)-1 {
+			m.cursor++
+		}
+	case key.Matches(km, keys.Open):
+		if len(m.projects) > 0 {
+			k := m.projects[m.cursor].Key
+			return m, func() tea.Msg { return openProjectMsg{key: k} }
+		}
+	case key.Matches(km, keys.NewProject):
+		return m, func() tea.Msg { return newProjectFormMsg{} }
+	case key.Matches(km, keys.EditProject):
+		if len(m.projects) > 0 {
+			k := m.projects[m.cursor].Key
+			return m, func() tea.Msg { return openProjectEditMsg{key: k} }
+		}
+	case key.Matches(km, keys.DeleteProject):
+		if len(m.projects) > 0 {
+			k := m.projects[m.cursor].Key
+			return m, func() tea.Msg { return askDeleteProjectMsg{key: k} }
+		}
+	case key.Matches(km, keys.Quit):
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -80,7 +83,7 @@ func (m projectsModel) View() string {
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓ move • enter open • n new • e edit • x delete • q quit"))
+	b.WriteString(helpLine(keys.Up, keys.Open, keys.NewProject, keys.EditProject, keys.DeleteProject, keys.Quit))
 	return b.String()
 }
 

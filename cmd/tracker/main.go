@@ -80,7 +80,7 @@ func runTUI(override string) error {
 		return err
 	}
 	application := app.New(database, clock.Real{}, paths.AttachmentsDir(dir))
-	return tui.Run(application)
+	return tui.Run(application, paths.KeysPath(dir))
 }
 
 func fail(err error) {
