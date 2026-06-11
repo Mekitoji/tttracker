@@ -99,6 +99,22 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 				return startActionMsg{kind: actionStatus, ticketKey: k, current: cur, origin: screenBoard}
 			}
 		}
+	case key.Matches(km, keys.MoveLeft):
+		if t, ok := m.selected(); ok {
+			if m.col > 0 {
+				newStatus := string(boardStatuses[m.col-1])
+				k := ticket.Key(m.projectKey, t.Number)
+				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
+			}
+		}
+	case key.Matches(km, keys.MoveRight):
+		if t, ok := m.selected(); ok {
+			if m.col < len(boardStatuses)-1 {
+				newStatus := string(boardStatuses[m.col+1])
+				k := ticket.Key(m.projectKey, t.Number)
+				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
+			}
+		}
 	case key.Matches(km, keys.DeleteTicket):
 		if t, ok := m.selected(); ok {
 			k := ticket.Key(m.projectKey, t.Number)
@@ -132,6 +148,19 @@ func (m boardModel) selected() (ticket.Ticket, bool) {
 	return col[m.row], true
 }
 
+// focusTicket finds a ticket by number and moves the cursor to it.
+func (m *boardModel) focusTicket(number int) bool {
+	for col, tickets := range m.columns {
+		for row, t := range tickets {
+			if t.Number == number {
+				m.col, m.row = col, row
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (m boardModel) View() string {
 	header := titleStyle.Render(fmt.Sprintf("%s — %s", m.projectKey, m.projectName))
 
@@ -158,7 +187,7 @@ func (m boardModel) View() string {
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	help := helpLine(keys.Left, keys.Up, keys.Open, keys.MoveStatus, keys.DeleteTicket,
+	help := helpLine(keys.Left, keys.Up, keys.Open, keys.MoveLeft, keys.MoveStatus, keys.DeleteTicket,
 		keys.Search, keys.NewTicket, keys.Projects, keys.Quit)
 	return header + "\n\n" + board + "\n\n" + help
 }

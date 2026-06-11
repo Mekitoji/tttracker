@@ -24,6 +24,8 @@ type KeyMap struct {
 	// board
 	NewTicket    key.Binding
 	MoveStatus   key.Binding
+	MoveLeft     key.Binding
+	MoveRight    key.Binding
 	DeleteTicket key.Binding
 	Search       key.Binding
 	Projects     key.Binding
@@ -80,6 +82,8 @@ func DefaultKeyMap() KeyMap {
 
 		NewTicket:    bind([]string{"n"}, "n", "new"),
 		MoveStatus:   bind([]string{"m"}, "m", "status"),
+		MoveLeft:     bind([]string{"ctrl+h"}, "⌃h", "←"),
+		MoveRight:    bind([]string{"ctrl+l"}, "⌃l", "→"),
 		DeleteTicket: bind([]string{"x"}, "x", "del"),
 		Search:       bind([]string{"/"}, "/", "search"),
 		Projects:     bind([]string{"p"}, "p", "projects"),
@@ -124,6 +128,7 @@ func (k *KeyMap) refs() []bindingRef {
 		{"up", &k.Up}, {"down", &k.Down}, {"left", &k.Left}, {"right", &k.Right},
 		{"open", &k.Open}, {"back", &k.Back}, {"quit", &k.Quit},
 		{"newTicket", &k.NewTicket}, {"moveStatus", &k.MoveStatus},
+		{"moveLeft", &k.MoveLeft}, {"moveRight", &k.MoveRight},
 		{"deleteTicket", &k.DeleteTicket}, {"search", &k.Search}, {"projects", &k.Projects},
 		{"setPriority", &k.SetPriority}, {"setType", &k.SetType}, {"editTitle", &k.EditTitle},
 		{"editLabels", &k.EditLabels}, {"editDescription", &k.EditDescription},

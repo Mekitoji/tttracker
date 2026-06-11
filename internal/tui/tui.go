@@ -64,6 +64,7 @@ type (
 	deleteProjectMsg    struct{ key string }
 	askDeleteTicketMsg  struct{ key string }
 	deleteTicketMsg     struct{ key string }
+	moveTicketMsg       struct{ key, newStatus string }
 	submitFormMsg       struct{ value string }
 	startActionMsg      struct {
 		kind      actionKind
@@ -253,6 +254,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
 			bm.col, bm.row = m.board.col, m.board.row
 			bm.clampRow()
+			m.board = bm
+		}
+		m.screen = screenBoard
+		return m, nil
+	case moveTicketMsg:
+		if _, err := m.app.Tickets.SetStatus(m.ctx, msg.key, msg.newStatus); err != nil {
+			m.status = err.Error()
+		}
+		if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
+			_, ticketNum, _ := ticket.ParseKey(msg.key)
+			if !bm.focusTicket(ticketNum) {
+				bm.col, bm.row = 0, 0
+			}
 			m.board = bm
 		}
 		m.screen = screenBoard
