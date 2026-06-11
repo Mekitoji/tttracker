@@ -44,7 +44,7 @@ type boardModel struct {
 	visibleCols  []int // indices of visible columns in boardStatuses
 }
 
-func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int) (boardModel, error) {
+func loadBoard(a *app.App, ctx context.Context, projectKey string, w, h int) (boardModel, error) {
 	proj, err := a.Projects.Get(ctx, projectKey)
 	if err != nil {
 		return boardModel{}, err
@@ -53,6 +53,16 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 	if err != nil {
 		return boardModel{}, err
 	}
+	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: groupTickets(tickets), width: w, height: h}
+	bm.updateVisibleCols()
+	// Start at first primary column (todo, index 1 in boardStatuses)
+	bm.col = bm.visibleCols[0]
+	bm.clampRow()
+	return bm, nil
+}
+
+// groupTickets buckets tickets into columns by status, in boardStatuses order.
+func groupTickets(tickets []ticket.Ticket) [][]ticket.Ticket {
 	cols := make([][]ticket.Ticket, len(boardStatuses))
 	for _, t := range tickets {
 		for i, st := range boardStatuses {
@@ -62,12 +72,25 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 			}
 		}
 	}
-	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: cols, width: w, height: h, showBlocked: false, showInactive: false, col: 0, row: 0}
-	bm.updateVisibleCols()
-	// Start at first primary column (todo, index 1 in boardStatuses)
-	bm.col = bm.visibleCols[0]
-	bm.clampRow()
-	return bm, nil
+	return cols
+}
+
+// reload re-fetches this project's tickets and regroups them into columns,
+// refreshing the data in place while keeping all view state (toggles, cursor)
+// untouched. The cursor is re-clamped to surviving tickets and parked on the
+// first visible column only if its column became hidden. Use this after any
+// mutation instead of rebuilding the model, so view state never gets dropped.
+func (m boardModel) reload(a *app.App, ctx context.Context) (boardModel, error) {
+	tickets, err := a.Tickets.List(ctx, m.projectKey)
+	if err != nil {
+		return m, err
+	}
+	m.columns = groupTickets(tickets)
+	if m.visibleColIndex(m.col) < 0 {
+		m.col = m.visibleCols[0]
+	}
+	m.clampRow()
+	return m, nil
 }
 
 // updateVisibleCols builds the list of visible column indices based on view mode
@@ -231,6 +254,18 @@ func (m boardModel) visibleColIndex(col int) int {
 		}
 	}
 	return -1
+}
+
+// focusTicketVisible moves the cursor to the ticket with the given number when it
+// is in a currently visible column, returning true. If the ticket is missing or
+// sits in a hidden column, the cursor is parked on the first visible column.
+func (m *boardModel) focusTicketVisible(number int) bool {
+	if m.focusTicket(number) && m.visibleColIndex(m.col) >= 0 {
+		m.clampRow()
+		return true
+	}
+	m.col, m.row = m.visibleCols[0], 0
+	return false
 }
 
 func (m boardModel) View() string {

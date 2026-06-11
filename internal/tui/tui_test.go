@@ -591,3 +591,80 @@ func TestBoardUsesConfiguredDeleteKey(t *testing.T) {
 		t.Fatalf("configured delete key should open confirm, got %v", m.screen)
 	}
 }
+
+// Regression: changing a ticket's status via the `m` picker must not drop the
+// blocked column toggle, and focus must follow the moved ticket.
+func TestStatusChangeKeepsBlockedView(t *testing.T) {
+	a := newTestApp(t)
+	mustSeed(t, a) // PET-1 "first" in todo
+	m := newTestModel(t, a)
+
+	m = send(t, m, keyEnter)      // board
+	m = send(t, m, keyRunes("!")) // show blocked column
+	if !m.board.showBlocked {
+		t.Fatalf("blocked column should be visible after !")
+	}
+	m = send(t, m, keyRunes("m")) // status picker (cursor on PET-1 in todo)
+	m = send(t, m, pickedMsg{value: "done"})
+
+	if m.screen != screenBoard {
+		t.Fatalf("want board, got %v", m.screen)
+	}
+	if !m.board.showBlocked {
+		t.Fatalf("blocked column disappeared after status change")
+	}
+	if got, ok := m.board.selected(); !ok || got.Number != 1 || got.Status != ticket.StatusDone {
+		t.Fatalf("focus did not follow moved ticket: %+v ok=%v", got, ok)
+	}
+}
+
+// Regression: changing status while on the inactive (backlog/archived) view must
+// keep you on that view rather than snapping back to the primary columns.
+func TestStatusChangeKeepsInactiveView(t *testing.T) {
+	a := newTestApp(t)
+	mustSeed(t, a)
+	m := newTestModel(t, a)
+
+	m = send(t, m, keyEnter) // board
+	// Move PET-1 todo -> backlog so it lives on the inactive view.
+	m = send(t, m, keyRunes("m"))
+	m = send(t, m, pickedMsg{value: "backlog"})
+	// Switch to the inactive view; cursor should land on PET-1 in backlog.
+	m = send(t, m, keyRunes("@"))
+	if !m.board.showInactive {
+		t.Fatalf("should be on inactive view after @")
+	}
+	if got, ok := m.board.selected(); !ok || got.Number != 1 {
+		t.Fatalf("expected PET-1 selected on backlog, got %+v ok=%v", got, ok)
+	}
+	// Change status backlog -> archived (both inactive).
+	m = send(t, m, keyRunes("m"))
+	m = send(t, m, pickedMsg{value: "archived"})
+
+	if !m.board.showInactive {
+		t.Fatalf("kicked off inactive view after status change")
+	}
+	if got, ok := m.board.selected(); !ok || got.Status != ticket.StatusArchived {
+		t.Fatalf("focus not on archived ticket: %+v ok=%v", got, ok)
+	}
+}
+
+// Regression: moving a ticket with the keyboard (ctrl+h) keeps the blocked view
+// and follows the ticket into its new column.
+func TestMoveTicketKeyKeepsBlockedView(t *testing.T) {
+	a := newTestApp(t)
+	mustSeed(t, a)
+	m := newTestModel(t, a)
+
+	m = send(t, m, keyEnter)      // board
+	m = send(t, m, keyRunes("!")) // show blocked column
+	// Cursor on PET-1 in todo; ctrl+h moves it to the blocked column (left).
+	m = send(t, m, tea.KeyMsg{Type: tea.KeyCtrlH})
+
+	if !m.board.showBlocked {
+		t.Fatalf("blocked view lost after ctrl+h move")
+	}
+	if got, ok := m.board.selected(); !ok || got.Number != 1 || got.Status != ticket.StatusBlocked {
+		t.Fatalf("focus not on moved ticket in blocked: %+v ok=%v", got, ok)
+	}
+}

@@ -145,7 +145,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case openProjectMsg:
-		bm, err := newBoardModel(m.app, m.ctx, msg.key, m.width, m.height)
+		bm, err := loadBoard(m.app, m.ctx, msg.key, m.width, m.height)
 		if err != nil {
 			m.status = err.Error()
 			return m, nil
@@ -165,9 +165,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenDetail:
 			// Reload the board so edits made in the detail view (title, status,
 			// labels, …) are reflected when we return to it.
-			if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
-				bm.col, bm.row = m.board.col, m.board.row
-				bm.clampRow()
+			if bm, err := m.board.reload(m.app, m.ctx); err == nil {
 				m.board = bm
 			}
 			m.screen = screenBoard
@@ -251,9 +249,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.app.Tickets.Delete(m.ctx, msg.key); err != nil {
 			m.status = err.Error()
 		}
-		if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
-			bm.col, bm.row = m.board.col, m.board.row
-			bm.clampRow()
+		if bm, err := m.board.reload(m.app, m.ctx); err == nil {
 			m.board = bm
 		}
 		m.screen = screenBoard
@@ -262,11 +258,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if _, err := m.app.Tickets.SetStatus(m.ctx, msg.key, msg.newStatus); err != nil {
 			m.status = err.Error()
 		}
-		if bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); err == nil {
+		if bm, err := m.board.reload(m.app, m.ctx); err == nil {
 			_, ticketNum, _ := ticket.ParseKey(msg.key)
-			if !bm.focusTicket(ticketNum) {
-				bm.col, bm.row = 0, 0
-			}
+			bm.focusTicketVisible(ticketNum)
 			m.board = bm
 		}
 		m.screen = screenBoard
@@ -347,7 +341,7 @@ func (m model) handleSubmit(value string) (tea.Model, tea.Cmd) {
 		m.form.errMsg = err.Error()
 		return m, nil
 	}
-	bm, err := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height)
+	bm, err := m.board.reload(m.app, m.ctx)
 	if err != nil {
 		m.status = err.Error()
 		return m, nil
@@ -479,9 +473,12 @@ func (m model) finishAction(err error) (tea.Model, tea.Cmd) {
 
 	switch origin {
 	case screenBoard:
-		if bm, e := newBoardModel(m.app, m.ctx, m.board.projectKey, m.width, m.height); e != nil {
+		if bm, e := m.board.reload(m.app, m.ctx); e != nil {
 			m.status = e.Error()
 		} else {
+			if _, num, err := ticket.ParseKey(ticketKey); err == nil {
+				bm.focusTicketVisible(num)
+			}
 			m.board = bm
 		}
 	case screenDetail:
