@@ -87,11 +87,11 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 			k := ticket.Key(m.projectKey, t.Number)
 			return m, func() tea.Msg { return openTicketMsg{key: k} }
 		}
-	case key.Matches(km, keys.Search):
+	case key.Matches(km, keys.BoardSearch):
 		return m, func() tea.Msg { return openSearchMsg{} }
-	case key.Matches(km, keys.NewTicket):
+	case key.Matches(km, keys.BoardNewTicket):
 		return m, func() tea.Msg { return newTicketFormMsg{} }
-	case key.Matches(km, keys.MoveStatus):
+	case key.Matches(km, keys.BoardMoveStatus):
 		if t, ok := m.selected(); ok {
 			k := ticket.Key(m.projectKey, t.Number)
 			cur := string(t.Status)
@@ -99,7 +99,7 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 				return startActionMsg{kind: actionStatus, ticketKey: k, current: cur, origin: screenBoard}
 			}
 		}
-	case key.Matches(km, keys.MoveLeft):
+	case key.Matches(km, keys.BoardMoveTicketLeft):
 		if t, ok := m.selected(); ok {
 			if m.col > 0 {
 				newStatus := string(boardStatuses[m.col-1])
@@ -107,7 +107,7 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
 			}
 		}
-	case key.Matches(km, keys.MoveRight):
+	case key.Matches(km, keys.BoardMoveTicketRight):
 		if t, ok := m.selected(); ok {
 			if m.col < len(boardStatuses)-1 {
 				newStatus := string(boardStatuses[m.col+1])
@@ -115,12 +115,12 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 				return m, func() tea.Msg { return moveTicketMsg{key: k, newStatus: newStatus} }
 			}
 		}
-	case key.Matches(km, keys.DeleteTicket):
+	case key.Matches(km, keys.BoardDeleteTicket):
 		if t, ok := m.selected(); ok {
 			k := ticket.Key(m.projectKey, t.Number)
 			return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
 		}
-	case key.Matches(km, keys.Projects), key.Matches(km, keys.Back):
+	case key.Matches(km, keys.BoardProjects), key.Matches(km, keys.Back):
 		return m, func() tea.Msg { return backMsg{} }
 	case key.Matches(km, keys.Quit):
 		return m, tea.Quit
@@ -187,8 +187,8 @@ func (m boardModel) View() string {
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	help := helpLine(keys.Left, keys.Up, keys.Open, keys.MoveLeft, keys.MoveStatus, keys.DeleteTicket,
-		keys.Search, keys.NewTicket, keys.Projects, keys.Quit)
+	help := helpLine(keys.Left, keys.Up, keys.Open, keys.BoardMoveTicketLeft, keys.BoardMoveStatus, keys.BoardDeleteTicket,
+		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.Quit)
 	return header + "\n\n" + board + "\n\n" + help
 }
 

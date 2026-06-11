@@ -568,7 +568,7 @@ func TestDeleteTicketConfirmCancel(t *testing.T) {
 func TestBoardUsesConfiguredDeleteKey(t *testing.T) {
 	orig := keys
 	t.Cleanup(func() { keys = orig })
-	keys.DeleteTicket = bind([]string{"D"}, "D", "del") // rebind delete to D
+	keys.BoardDeleteTicket = bind([]string{"D"}, "D", "del") // rebind delete to D
 
 	a := newTestApp(t)
 	ctx := context.Background()

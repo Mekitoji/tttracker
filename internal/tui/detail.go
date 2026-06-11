@@ -81,42 +81,42 @@ func (m detailModel) Update(msg tea.Msg) (detailModel, tea.Cmd) {
 		if m.cursor < m.total()-1 {
 			m.cursor++
 		}
-	case key.Matches(km, keys.MoveStatus):
+	case key.Matches(km, keys.BoardMoveStatus):
 		return m, m.action(actionStatus, 0, string(m.ticket.Status))
-	case key.Matches(km, keys.SetPriority):
+	case key.Matches(km, keys.DetailSetPriority):
 		return m, m.action(actionPriority, 0, string(m.ticket.Priority))
-	case key.Matches(km, keys.SetType):
+	case key.Matches(km, keys.DetailSetType):
 		return m, m.action(actionType, 0, string(m.ticket.Type))
-	case key.Matches(km, keys.EditTitle):
+	case key.Matches(km, keys.DetailEditTitle):
 		return m, m.action(actionTitle, 0, m.ticket.Title)
-	case key.Matches(km, keys.EditLabels):
+	case key.Matches(km, keys.DetailEditLabels):
 		return m, m.action(actionLabels, 0, strings.Join(m.ticket.Labels, ", "))
-	case key.Matches(km, keys.EditDescription):
+	case key.Matches(km, keys.DetailEditDescription):
 		return m, m.action(actionDescription, 0, "")
-	case key.Matches(km, keys.AddComment):
+	case key.Matches(km, keys.DetailAddComment):
 		return m, m.action(actionComment, 0, "")
-	case key.Matches(km, keys.AddSubtask):
+	case key.Matches(km, keys.DetailAddSubtask):
 		return m, m.action(actionSubtaskAdd, 0, "")
-	case key.Matches(km, keys.ToggleSubtask):
+	case key.Matches(km, keys.DetailToggleSubtask):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskToggle, st.ID, "")
 		}
-	case key.Matches(km, keys.RenameSubtask):
+	case key.Matches(km, keys.DetailRenameSubtask):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskRename, st.ID, st.Title)
 		}
-	case key.Matches(km, keys.EditComment):
+	case key.Matches(km, keys.DetailEditComment):
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentEdit, c.ID, c.Body)
 		}
-	case key.Matches(km, keys.DeleteItem):
+	case key.Matches(km, keys.DetailDeleteItem):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskDelete, st.ID, "")
 		}
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentDelete, c.ID, "")
 		}
-	case key.Matches(km, keys.DeleteTicket):
+	case key.Matches(km, keys.BoardDeleteTicket):
 		k := m.key
 		return m, func() tea.Msg { return askDeleteTicketMsg{key: k} }
 	case key.Matches(km, keys.Back), key.Matches(km, keys.Quit):
@@ -190,11 +190,11 @@ func (m detailModel) View() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(helpLine(keys.MoveStatus, keys.SetPriority, keys.SetType, keys.EditTitle,
-		keys.EditLabels, keys.EditDescription, keys.AddSubtask, keys.AddComment))
+	b.WriteString(helpLine(keys.BoardMoveStatus, keys.DetailSetPriority, keys.DetailSetType, keys.DetailEditTitle,
+		keys.DetailEditLabels, keys.DetailEditDescription, keys.DetailAddSubtask, keys.DetailAddComment))
 	b.WriteString("\n")
-	b.WriteString(helpLine(keys.Up, keys.ToggleSubtask, keys.RenameSubtask, keys.EditComment,
-		keys.DeleteItem, keys.DeleteTicket, keys.Back))
+	b.WriteString(helpLine(keys.Up, keys.DetailToggleSubtask, keys.DetailRenameSubtask, keys.DetailEditComment,
+		keys.DetailDeleteItem, keys.BoardDeleteTicket, keys.Back))
 	return b.String()
 }
 

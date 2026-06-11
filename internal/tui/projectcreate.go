@@ -35,7 +35,7 @@ func (m projectCreateModel) Update(msg tea.Msg) (projectCreateModel, tea.Cmd) {
 		switch {
 		case key.Matches(km, keys.Back):
 			return m, func() tea.Msg { return backMsg{} }
-		case key.Matches(km, keys.NextField), key.Matches(km, keys.PrevField):
+		case key.Matches(km, keys.FormNextField), key.Matches(km, keys.FormPrevField):
 			m.focus = 1 - m.focus
 			if m.focus == 0 {
 				m.keyInput.Focus()
@@ -79,7 +79,7 @@ func (m projectCreateModel) View() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(helpLine(keys.NextField, keys.Open, keys.Back))
+	b.WriteString(helpLine(keys.FormNextField, keys.Open, keys.Back))
 	return b.String()
 }
 

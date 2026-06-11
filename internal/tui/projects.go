@@ -45,14 +45,14 @@ func (m projectsModel) Update(msg tea.Msg) (projectsModel, tea.Cmd) {
 			k := m.projects[m.cursor].Key
 			return m, func() tea.Msg { return openProjectMsg{key: k} }
 		}
-	case key.Matches(km, keys.NewProject):
+	case key.Matches(km, keys.ProjectsNew):
 		return m, func() tea.Msg { return newProjectFormMsg{} }
-	case key.Matches(km, keys.EditProject):
+	case key.Matches(km, keys.ProjectsEdit):
 		if len(m.projects) > 0 {
 			k := m.projects[m.cursor].Key
 			return m, func() tea.Msg { return openProjectEditMsg{key: k} }
 		}
-	case key.Matches(km, keys.DeleteProject):
+	case key.Matches(km, keys.ProjectsDelete):
 		if len(m.projects) > 0 {
 			k := m.projects[m.cursor].Key
 			return m, func() tea.Msg { return askDeleteProjectMsg{key: k} }
@@ -83,7 +83,7 @@ func (m projectsModel) View() string {
 		}
 	}
 	b.WriteString("\n")
-	b.WriteString(helpLine(keys.Up, keys.Open, keys.NewProject, keys.EditProject, keys.DeleteProject, keys.Quit))
+	b.WriteString(helpLine(keys.Up, keys.Open, keys.ProjectsNew, keys.ProjectsEdit, keys.ProjectsDelete, keys.Quit))
 	return b.String()
 }
 

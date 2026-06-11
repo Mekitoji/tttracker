@@ -156,10 +156,10 @@ func (m projectEditModel) updatePicker(msg tea.Msg) (projectEditModel, tea.Cmd) 
 		case key.Matches(km, keys.Back):
 			m.mode = peMenu
 			return m, nil
-		case key.Matches(km, keys.ToggleHidden):
+		case key.Matches(km, keys.FormToggleHidden):
 			m.picker.ShowHidden = !m.picker.ShowHidden
 			return m, m.picker.Init()
-		case key.Matches(km, keys.ManualEntry):
+		case key.Matches(km, keys.FormManualEntry):
 			return m.openManual()
 		}
 	}
@@ -388,7 +388,7 @@ func (m projectEditModel) pickerView() string {
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("↑/↓ move • → open • ← up • enter select dir"))
 	b.WriteString("\n")
-	b.WriteString(helpLine(keys.ToggleHidden, keys.ManualEntry, keys.Back))
+	b.WriteString(helpLine(keys.FormToggleHidden, keys.FormManualEntry, keys.Back))
 	return b.String()
 }
 

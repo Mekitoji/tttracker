@@ -22,45 +22,45 @@ type KeyMap struct {
 	Quit  key.Binding
 
 	// board
-	NewTicket    key.Binding
-	MoveStatus   key.Binding
-	MoveLeft     key.Binding
-	MoveRight    key.Binding
-	DeleteTicket key.Binding
-	Search       key.Binding
-	Projects     key.Binding
+	BoardNewTicket        key.Binding
+	BoardMoveStatus       key.Binding
+	BoardMoveTicketLeft   key.Binding
+	BoardMoveTicketRight  key.Binding
+	BoardDeleteTicket     key.Binding
+	BoardSearch           key.Binding
+	BoardProjects         key.Binding
 
 	// detail
-	SetPriority     key.Binding
-	SetType         key.Binding
-	EditTitle       key.Binding
-	EditLabels      key.Binding
-	EditDescription key.Binding
-	AddComment      key.Binding
-	AddSubtask      key.Binding
-	ToggleSubtask   key.Binding
-	RenameSubtask   key.Binding
-	EditComment     key.Binding
-	DeleteItem      key.Binding
+	DetailSetPriority     key.Binding
+	DetailSetType         key.Binding
+	DetailEditTitle       key.Binding
+	DetailEditLabels      key.Binding
+	DetailEditDescription key.Binding
+	DetailAddComment      key.Binding
+	DetailAddSubtask      key.Binding
+	DetailToggleSubtask   key.Binding
+	DetailRenameSubtask   key.Binding
+	DetailEditComment     key.Binding
+	DetailDeleteItem      key.Binding
 
 	// shared text-input result lists (search, repo finder)
 	ResultsUp   key.Binding
 	ResultsDown key.Binding
 
 	// projects
-	NewProject    key.Binding
-	EditProject   key.Binding
-	DeleteProject key.Binding
+	ProjectsNew    key.Binding
+	ProjectsEdit   key.Binding
+	ProjectsDelete key.Binding
 
 	// confirm
 	ConfirmYes key.Binding
 	ConfirmNo  key.Binding
 
 	// forms / project edit
-	NextField    key.Binding
-	PrevField    key.Binding
-	ToggleHidden key.Binding
-	ManualEntry  key.Binding
+	FormNextField    key.Binding
+	FormPrevField    key.Binding
+	FormToggleHidden key.Binding
+	FormManualEntry  key.Binding
 }
 
 // keys is the active key map. It is the default until Run loads overrides.
@@ -80,40 +80,40 @@ func DefaultKeyMap() KeyMap {
 		Back:  bind([]string{"esc"}, "esc", "back"),
 		Quit:  bind([]string{"q"}, "q", "quit"),
 
-		NewTicket:    bind([]string{"n"}, "n", "new"),
-		MoveStatus:   bind([]string{"m"}, "m", "status"),
-		MoveLeft:     bind([]string{"ctrl+h"}, "⌃h", "←"),
-		MoveRight:    bind([]string{"ctrl+l"}, "⌃l", "→"),
-		DeleteTicket: bind([]string{"x"}, "x", "del"),
-		Search:       bind([]string{"/"}, "/", "search"),
-		Projects:     bind([]string{"p"}, "p", "projects"),
+		BoardNewTicket:       bind([]string{"n"}, "n", "new"),
+		BoardMoveStatus:      bind([]string{"m"}, "m", "status"),
+		BoardMoveTicketLeft:  bind([]string{"ctrl+h"}, "⌃h", "←"),
+		BoardMoveTicketRight: bind([]string{"ctrl+l"}, "⌃l", "→"),
+		BoardDeleteTicket:    bind([]string{"x"}, "x", "del"),
+		BoardSearch:          bind([]string{"/"}, "/", "search"),
+		BoardProjects:        bind([]string{"p"}, "p", "projects"),
 
-		SetPriority:     bind([]string{"p"}, "p", "priority"),
-		SetType:         bind([]string{"t"}, "t", "type"),
-		EditTitle:       bind([]string{"r"}, "r", "rename"),
-		EditLabels:      bind([]string{"l"}, "l", "labels"),
-		EditDescription: bind([]string{"e"}, "e", "desc"),
-		AddComment:      bind([]string{"c"}, "c", "comment"),
-		AddSubtask:      bind([]string{"s"}, "s", "subtask"),
-		ToggleSubtask:   bind([]string{" "}, "␣", "toggle"),
-		RenameSubtask:   bind([]string{"R"}, "R", "rename-sub"),
-		EditComment:     bind([]string{"enter"}, "enter", "edit-comment"),
-		DeleteItem:      bind([]string{"d"}, "d", "delete"),
+		DetailSetPriority:     bind([]string{"p"}, "p", "priority"),
+		DetailSetType:         bind([]string{"t"}, "t", "type"),
+		DetailEditTitle:       bind([]string{"r"}, "r", "rename"),
+		DetailEditLabels:      bind([]string{"l"}, "l", "labels"),
+		DetailEditDescription: bind([]string{"e"}, "e", "desc"),
+		DetailAddComment:      bind([]string{"c"}, "c", "comment"),
+		DetailAddSubtask:      bind([]string{"s"}, "s", "subtask"),
+		DetailToggleSubtask:   bind([]string{" "}, "␣", "toggle"),
+		DetailRenameSubtask:   bind([]string{"R"}, "R", "rename-sub"),
+		DetailEditComment:     bind([]string{"enter"}, "enter", "edit-comment"),
+		DetailDeleteItem:      bind([]string{"d"}, "d", "delete"),
 
 		ResultsUp:   bind([]string{"up", "ctrl+k"}, "↑/↓ ⌃k/⌃j", "select"),
 		ResultsDown: bind([]string{"down", "ctrl+j"}, "", ""),
 
-		NewProject:    bind([]string{"n"}, "n", "new"),
-		EditProject:   bind([]string{"e"}, "e", "edit"),
-		DeleteProject: bind([]string{"x"}, "x", "delete"),
+		ProjectsNew:    bind([]string{"n"}, "n", "new"),
+		ProjectsEdit:   bind([]string{"e"}, "e", "edit"),
+		ProjectsDelete: bind([]string{"x"}, "x", "delete"),
 
 		ConfirmYes: bind([]string{"y", "Y"}, "y", "confirm"),
 		ConfirmNo:  bind([]string{"n", "N"}, "n", "cancel"),
 
-		NextField:    bind([]string{"tab", "down"}, "tab", "next"),
-		PrevField:    bind([]string{"shift+tab", "up"}, "shift+tab", "prev"),
-		ToggleHidden: bind([]string{"."}, ".", "hidden"),
-		ManualEntry:  bind([]string{"i", "tab"}, "i", "manual"),
+		FormNextField:    bind([]string{"tab", "down"}, "tab", "next"),
+		FormPrevField:    bind([]string{"shift+tab", "up"}, "shift+tab", "prev"),
+		FormToggleHidden: bind([]string{"."}, ".", "hidden"),
+		FormManualEntry:  bind([]string{"i", "tab"}, "i", "manual"),
 	}
 }
 
@@ -125,21 +125,42 @@ type bindingRef struct {
 // refs maps the JSON config action names to the corresponding bindings.
 func (k *KeyMap) refs() []bindingRef {
 	return []bindingRef{
-		{"up", &k.Up}, {"down", &k.Down}, {"left", &k.Left}, {"right", &k.Right},
-		{"open", &k.Open}, {"back", &k.Back}, {"quit", &k.Quit},
-		{"newTicket", &k.NewTicket}, {"moveStatus", &k.MoveStatus},
-		{"moveLeft", &k.MoveLeft}, {"moveRight", &k.MoveRight},
-		{"deleteTicket", &k.DeleteTicket}, {"search", &k.Search}, {"projects", &k.Projects},
-		{"setPriority", &k.SetPriority}, {"setType", &k.SetType}, {"editTitle", &k.EditTitle},
-		{"editLabels", &k.EditLabels}, {"editDescription", &k.EditDescription},
-		{"addComment", &k.AddComment}, {"addSubtask", &k.AddSubtask},
-		{"toggleSubtask", &k.ToggleSubtask}, {"renameSubtask", &k.RenameSubtask},
-		{"editComment", &k.EditComment}, {"deleteItem", &k.DeleteItem},
-		{"resultsUp", &k.ResultsUp}, {"resultsDown", &k.ResultsDown},
-		{"newProject", &k.NewProject}, {"editProject", &k.EditProject}, {"deleteProject", &k.DeleteProject},
-		{"confirmYes", &k.ConfirmYes}, {"confirmNo", &k.ConfirmNo},
-		{"nextField", &k.NextField}, {"prevField", &k.PrevField},
-		{"toggleHidden", &k.ToggleHidden}, {"manualEntry", &k.ManualEntry},
+		{"up", &k.Up},
+		{"down", &k.Down},
+		{"left", &k.Left},
+		{"right", &k.Right},
+		{"open", &k.Open},
+		{"back", &k.Back},
+		{"quit", &k.Quit},
+		{"board_new_ticket", &k.BoardNewTicket},
+		{"board_move_status", &k.BoardMoveStatus},
+		{"board_move_ticket_left", &k.BoardMoveTicketLeft},
+		{"board_move_ticket_right", &k.BoardMoveTicketRight},
+		{"board_delete_ticket", &k.BoardDeleteTicket},
+		{"board_search", &k.BoardSearch},
+		{"board_projects", &k.BoardProjects},
+		{"detail_set_priority", &k.DetailSetPriority},
+		{"detail_set_type", &k.DetailSetType},
+		{"detail_edit_title", &k.DetailEditTitle},
+		{"detail_edit_labels", &k.DetailEditLabels},
+		{"detail_edit_description", &k.DetailEditDescription},
+		{"detail_add_comment", &k.DetailAddComment},
+		{"detail_add_subtask", &k.DetailAddSubtask},
+		{"detail_toggle_subtask", &k.DetailToggleSubtask},
+		{"detail_rename_subtask", &k.DetailRenameSubtask},
+		{"detail_edit_comment", &k.DetailEditComment},
+		{"detail_delete_item", &k.DetailDeleteItem},
+		{"results_up", &k.ResultsUp},
+		{"results_down", &k.ResultsDown},
+		{"projects_new", &k.ProjectsNew},
+		{"projects_edit", &k.ProjectsEdit},
+		{"projects_delete", &k.ProjectsDelete},
+		{"confirm_yes", &k.ConfirmYes},
+		{"confirm_no", &k.ConfirmNo},
+		{"form_next_field", &k.FormNextField},
+		{"form_prev_field", &k.FormPrevField},
+		{"form_toggle_hidden", &k.FormToggleHidden},
+		{"form_manual_entry", &k.FormManualEntry},
 	}
 }
 
