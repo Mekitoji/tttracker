@@ -1,36 +1,118 @@
 {
-  "up": ["up", "k"],
-  "down": ["down", "j"],
-  "left": ["left", "h"],
-  "right": ["right", "l"],
-  "open": ["enter"],
-  "back": ["esc"],
-  "quit": ["q"],
-  "newTicket": ["n"],
-  "moveStatus": ["m"],
-  "deleteTicket": ["x"],
-  "search": ["/"],
-  "projects": ["p"],
-  "setPriority": ["p"],
-  "setType": ["t"],
-  "editTitle": ["r"],
-  "editLabels": ["l"],
-  "editDescription": ["e"],
-  "addComment": ["c"],
-  "addSubtask": ["s"],
-  "toggleSubtask": [" "],
-  "renameSubtask": ["R"],
-  "editComment": ["enter"],
-  "deleteItem": ["d"],
-  "resultsUp": ["up", "ctrl+k"],
-  "resultsDown": ["down", "ctrl+j"],
-  "newProject": ["n"],
-  "editProject": ["e"],
-  "deleteProject": ["x"],
-  "confirmYes": ["y", "Y"],
-  "confirmNo": ["n", "N"],
-  "nextField": ["tab", "down"],
-  "prevField": ["shift+tab", "up"],
-  "toggleHidden": ["."],
-  "manualEntry": ["i", "tab"]
+  "description": "Custiomize the default key bindings by creating 'keys.json' file in your '~/.local/shared/tracker/' folder and write your own binding to replace default ones. The keys below show an example of how the default key bindings look like.",
+  "keys": {
+    "up": [
+      "up",
+      "k"
+    ],
+    "down": [
+      "down",
+      "j"
+    ],
+    "left": [
+      "left",
+      "h"
+    ],
+    "right": [
+      "right",
+      "l"
+    ],
+    "open": [
+      "enter"
+    ],
+    "back": [
+      "esc"
+    ],
+    "quit": [
+      "q"
+    ],
+    "newTicket": [
+      "n"
+    ],
+    "moveStatus": [
+      "m"
+    ],
+    "deleteTicket": [
+      "x"
+    ],
+    "search": [
+      "/"
+    ],
+    "projects": [
+      "p"
+    ],
+    "setPriority": [
+      "p"
+    ],
+    "setType": [
+      "t"
+    ],
+    "editTitle": [
+      "r"
+    ],
+    "editLabels": [
+      "l"
+    ],
+    "editDescription": [
+      "e"
+    ],
+    "addComment": [
+      "c"
+    ],
+    "addSubtask": [
+      "s"
+    ],
+    "toggleSubtask": [
+      " "
+    ],
+    "renameSubtask": [
+      "R"
+    ],
+    "editComment": [
+      "enter"
+    ],
+    "deleteItem": [
+      "d"
+    ],
+    "resultsUp": [
+      "up",
+      "ctrl+k"
+    ],
+    "resultsDown": [
+      "down",
+      "ctrl+j"
+    ],
+    "newProject": [
+      "n"
+    ],
+    "editProject": [
+      "e"
+    ],
+    "deleteProject": [
+      "x"
+    ],
+    "confirmYes": [
+      "y",
+      "Y"
+    ],
+    "confirmNo": [
+      "n",
+      "N"
+    ],
+    "nextField": [
+      "tab",
+      "down"
+    ],
+    "prevField": [
+      "shift+tab",
+      "up"
+    ],
+    "toggleHidden": [
+      "."
+    ],
+    "manualEntry": [
+      "i",
+      "tab"
+    ]
+  }
 }
