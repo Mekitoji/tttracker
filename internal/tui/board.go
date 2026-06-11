@@ -15,28 +15,33 @@ import (
 	"tttracker/internal/ticket"
 )
 
-// boardStatuses is the set (and order) of columns shown on the board; archived
-// tickets are intentionally omitted. Blocked is first (can be toggled hidden).
+// boardStatuses is the set (and order) of columns shown on the board.
+// Blocked is toggleable (left), todo/in_progress/done are primary (middle),
+// backlog/archived are toggleable inactive (right).
 var boardStatuses = []ticket.Status{
 	ticket.StatusBlocked, ticket.StatusTodo, ticket.StatusInProgress, ticket.StatusDone,
+	ticket.StatusBacklog, ticket.StatusArchived,
 }
 
 var boardTitles = map[ticket.Status]string{
+	ticket.StatusBlocked:    "Blocked",
 	ticket.StatusTodo:       "Todo",
 	ticket.StatusInProgress: "In Progress",
-	ticket.StatusBlocked:    "Blocked",
 	ticket.StatusDone:       "Done",
+	ticket.StatusBacklog:    "Backlog",
+	ticket.StatusArchived:   "Archived",
 }
 
 type boardModel struct {
-	projectKey  string
-	projectName string
-	columns     [][]ticket.Ticket // indexed by boardStatuses order
-	col, row    int
-	width       int
-	height      int
-	showBlocked bool  // toggle visibility of blocked column
-	visibleCols []int // indices of visible columns in boardStatuses
+	projectKey   string
+	projectName  string
+	columns      [][]ticket.Ticket // indexed by boardStatuses order
+	col, row     int
+	width        int
+	height       int
+	showBlocked  bool  // toggle visibility of blocked column
+	showInactive bool  // toggle visibility of backlog/archived columns
+	visibleCols  []int // indices of visible columns in boardStatuses
 }
 
 func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int) (boardModel, error) {
@@ -57,7 +62,7 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 			}
 		}
 	}
-	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: cols, width: w, height: h, showBlocked: false, col: 0, row: 0}
+	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: cols, width: w, height: h, showBlocked: false, showInactive: false, col: 0, row: 0}
 	bm.updateVisibleCols()
 	// Start at first primary column (todo, index 1 in boardStatuses)
 	bm.col = bm.visibleCols[0]
@@ -65,14 +70,29 @@ func newBoardModel(a *app.App, ctx context.Context, projectKey string, w, h int)
 	return bm, nil
 }
 
-// updateVisibleCols builds the list of visible column indices based on showBlocked
+// updateVisibleCols builds the list of visible column indices based on view mode
+// showInactive=false: primary columns (blocked if enabled, todo, in_progress, done)
+// showInactive=true: inactive columns (blocked if enabled, backlog, archived)
 func (m *boardModel) updateVisibleCols() {
 	m.visibleCols = nil
 	for i, st := range boardStatuses {
-		if st == ticket.StatusBlocked && !m.showBlocked {
+		// Blocked is always available if showBlocked is true
+		if st == ticket.StatusBlocked {
+			if m.showBlocked {
+				m.visibleCols = append(m.visibleCols, i)
+			}
 			continue
 		}
-		m.visibleCols = append(m.visibleCols, i)
+
+		// Show either primary or inactive columns based on showInactive
+		isPrimary := st == ticket.StatusTodo || st == ticket.StatusInProgress || st == ticket.StatusDone
+		isInactive := st == ticket.StatusBacklog || st == ticket.StatusArchived
+
+		if m.showInactive && isInactive {
+			m.visibleCols = append(m.visibleCols, i)
+		} else if !m.showInactive && isPrimary {
+			m.visibleCols = append(m.visibleCols, i)
+		}
 	}
 }
 
@@ -155,6 +175,15 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 			m.col = m.visibleCols[0]
 		}
 		m.clampRow()
+	case key.Matches(km, keys.BoardToggleInactive):
+		m.showInactive = !m.showInactive
+		m.updateVisibleCols()
+		// clamp col to visible range
+		visIdx := m.visibleColIndex(m.col)
+		if visIdx < 0 || visIdx >= len(m.visibleCols) {
+			m.col = m.visibleCols[0]
+		}
+		m.clampRow()
 	case key.Matches(km, keys.Quit):
 		return m, tea.Quit
 	}
@@ -205,13 +234,18 @@ func (m boardModel) visibleColIndex(col int) int {
 }
 
 func (m boardModel) View() string {
-	header := titleStyle.Render(fmt.Sprintf("%s — %s", m.projectKey, m.projectName))
+	header := titleStyle.Render(fmt.Sprintf("Board — %s", m.projectKey))
 
-	// Calculate width per visible column (border: 2 chars, padding: 2 chars)
-	totalBorderPadding := 4
-	innerW := max((m.width/len(m.visibleCols))-totalBorderPadding-2, 14)
-	// Account for header and help lines
-	contentHeight := max(m.height-7, 8)
+	// Per-column total width budget; the column renders as innerW (content+padding)
+	// plus 2 border cells, so keep a small margin to avoid horizontal overflow.
+	innerW := max((m.width/len(m.visibleCols))-6, 14)
+	// Text width inside a column. columnStyle has Padding(0,1), so the usable text
+	// area is innerW-2; cards are truncated to this so they never wrap and grow.
+	cardW := max(innerW-2, 6)
+	// Fixed inner content height. Every column is pinned to exactly this height
+	// below, so columns never change height between view switches no matter how
+	// many cards a column holds.
+	contentHeight := max(m.height-9, 6)
 
 	cols := make([]string, len(m.visibleCols))
 	for visIdx, colIdx := range m.visibleCols {
@@ -225,27 +259,24 @@ func (m boardModel) View() string {
 		} else {
 			for j, t := range m.columns[colIdx] {
 				selected := colIdx == m.col && j == m.row
-				b.WriteString(renderCard(t, selected, innerW))
+				b.WriteString(renderCard(t, selected, cardW))
 				b.WriteString("\n")
 			}
-		}
-
-		// Pad with empty lines to fill the height
-		lines := len(strings.Split(strings.TrimRight(b.String(), "\n"), "\n"))
-		for i := lines; i < contentHeight; i++ {
-			b.WriteString("\n")
 		}
 
 		style := columnStyle
 		if colIdx == m.col {
 			style = columnSelStyle
 		}
-		cols[visIdx] = style.Width(innerW).Render(b.String())
+		// Height pads short columns; MaxHeight clips tall ones. Together they pin
+		// every column to contentHeight content rows + 2 border rows, so all
+		// columns are always the same height.
+		cols[visIdx] = style.Width(innerW).Height(contentHeight).MaxHeight(contentHeight + 2).Render(b.String())
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
 	help := helpLine(keys.Left, keys.Up, keys.Open, keys.BoardMoveTicketLeft, keys.BoardMoveStatus, keys.BoardDeleteTicket,
-		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.BoardToggleBlocked, keys.Quit)
+		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.BoardToggleBlocked, keys.BoardToggleInactive, keys.Quit)
 	return header + "\n\n" + board + "\n\n" + help
 }
 

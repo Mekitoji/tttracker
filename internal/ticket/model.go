@@ -33,6 +33,7 @@ func (t Type) Valid() bool {
 type Status string
 
 const (
+	StatusBacklog    Status = "backlog"
 	StatusTodo       Status = "todo"
 	StatusInProgress Status = "in_progress"
 	StatusBlocked    Status = "blocked"
@@ -42,7 +43,7 @@ const (
 
 func (s Status) Valid() bool {
 	switch s {
-	case StatusTodo, StatusInProgress, StatusBlocked, StatusDone, StatusArchived:
+	case StatusBacklog, StatusTodo, StatusInProgress, StatusBlocked, StatusDone, StatusArchived:
 		return true
 	}
 	return false

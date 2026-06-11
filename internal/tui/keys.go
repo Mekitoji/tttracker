@@ -30,6 +30,7 @@ type KeyMap struct {
 	BoardSearch           key.Binding
 	BoardProjects         key.Binding
 	BoardToggleBlocked    key.Binding
+	BoardToggleInactive   key.Binding
 
 	// detail
 	DetailSetPriority     key.Binding
@@ -89,6 +90,7 @@ func DefaultKeyMap() KeyMap {
 		BoardSearch:          bind([]string{"/"}, "/", "search"),
 		BoardProjects:        bind([]string{"p"}, "p", "projects"),
 		BoardToggleBlocked:   bind([]string{"!"}, "!", "blocked"),
+		BoardToggleInactive:  bind([]string{"@"}, "@", "inactive"),
 
 		DetailSetPriority:     bind([]string{"p"}, "p", "priority"),
 		DetailSetType:         bind([]string{"t"}, "t", "type"),
@@ -142,6 +144,7 @@ func (k *KeyMap) refs() []bindingRef {
 		{"board_search", &k.BoardSearch},
 		{"board_projects", &k.BoardProjects},
 		{"board_toggle_blocked", &k.BoardToggleBlocked},
+		{"board_toggle_inactive", &k.BoardToggleInactive},
 		{"detail_set_priority", &k.DetailSetPriority},
 		{"detail_set_type", &k.DetailSetType},
 		{"detail_edit_title", &k.DetailEditTitle},
