@@ -38,14 +38,14 @@ func New(database *sql.DB, clk clock.Clock, attachmentsDir string) *App {
 	events := activity.NewRepository()
 	storage := attachment.NewStorage(attachmentsDir)
 
-	// Built before the project service, which takes it as its AttachmentRemover
-	// so deleting a project also removes its attachment files.
+	// Built before the project and ticket services, which take it as their
+	// AttachmentRemover so deleting either also removes the associated files.
 	attachments := attachment.NewService(database, attachmentRepo, ticketRepo, projectRepo, events, storage, clk)
 
 	return &App{
 		DB:          database,
 		Projects:    project.NewService(database, projectRepo, clk, attachments),
-		Tickets:     ticket.NewService(database, ticketRepo, projectRepo, events, clk),
+		Tickets:     ticket.NewService(database, ticketRepo, projectRepo, events, clk, attachments),
 		Subtasks:    subtask.NewService(database, subtaskRepo, ticketRepo, projectRepo, events, clk),
 		Comments:    comment.NewService(database, commentRepo, ticketRepo, projectRepo, events, clk),
 		Attachments: attachments,

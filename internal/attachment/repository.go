@@ -57,11 +57,7 @@ func (Repository) ListByTicket(ctx context.Context, q db.DBTX, ticketID int64) (
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			fmt.Printf("Error closing rows: %v\n", err)
-		}
-	}()
+	defer func() { _ = rows.Close() }() // close error is inconsequential after a read
 
 	var out []Attachment
 	for rows.Next() {

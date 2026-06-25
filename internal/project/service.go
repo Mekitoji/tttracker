@@ -177,8 +177,9 @@ func (s *Service) Get(ctx context.Context, key string) (*Project, error) {
 // Delete removes the project and (via DB cascade) all its tickets, subtasks,
 // comments, attachment metadata, and activity; the FTS index is cleaned by the
 // ticket triggers. After the transaction commits, the project's attachment files
-// are removed best-effort (filesystem work is not part of the transaction, and
-// an orphaned file is safer than a dangling row).
+// are removed (filesystem work is not part of the transaction). A cleanup failure
+// is returned wrapped in attachment.ErrFileCleanup — the project is already gone,
+// so it is a non-fatal warning, not a reason to consider the delete failed.
 func (s *Service) Delete(ctx context.Context, key string) error {
 	if err := db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		p, err := s.repo.GetByKey(ctx, tx, key)
@@ -189,8 +190,9 @@ func (s *Service) Delete(ctx context.Context, key string) error {
 	}); err != nil {
 		return err
 	}
-	_ = s.attachments.RemoveProjectFiles(key)
-	return nil
+	// The project is gone; surface a file-cleanup failure as a non-fatal warning
+	// (attachment.ErrFileCleanup) instead of dropping it.
+	return s.attachments.RemoveProjectFiles(key)
 }
 
 // List returns all projects ordered by key.

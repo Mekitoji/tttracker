@@ -22,15 +22,15 @@ type KeyMap struct {
 	Quit  key.Binding
 
 	// board
-	BoardNewTicket        key.Binding
-	BoardMoveStatus       key.Binding
-	BoardMoveTicketLeft   key.Binding
-	BoardMoveTicketRight  key.Binding
-	BoardDeleteTicket     key.Binding
-	BoardSearch           key.Binding
-	BoardProjects         key.Binding
-	BoardToggleBlocked    key.Binding
-	BoardToggleInactive   key.Binding
+	BoardNewTicket       key.Binding
+	BoardMoveStatus      key.Binding
+	BoardMoveTicketLeft  key.Binding
+	BoardMoveTicketRight key.Binding
+	BoardDeleteTicket    key.Binding
+	BoardSearch          key.Binding
+	BoardProjects        key.Binding
+	BoardToggleBlocked   key.Binding
+	BoardToggleInactive  key.Binding
 
 	// detail
 	DetailSetPriority     key.Binding
@@ -43,6 +43,8 @@ type KeyMap struct {
 	DetailToggleSubtask   key.Binding
 	DetailRenameSubtask   key.Binding
 	DetailEditComment     key.Binding
+	DetailOpenAttachment  key.Binding
+	DetailAddAttachment   key.Binding
 	DetailDeleteItem      key.Binding
 
 	// shared text-input result lists (search, repo finder)
@@ -102,6 +104,8 @@ func DefaultKeyMap() KeyMap {
 		DetailToggleSubtask:   bind([]string{" "}, "␣", "toggle"),
 		DetailRenameSubtask:   bind([]string{"R"}, "R", "rename-sub"),
 		DetailEditComment:     bind([]string{"enter"}, "enter", "edit-comment"),
+		DetailOpenAttachment:  bind([]string{"enter"}, "enter", "open"),
+		DetailAddAttachment:   bind([]string{"a"}, "a", "attach"),
 		DetailDeleteItem:      bind([]string{"d"}, "d", "delete"),
 
 		ResultsUp:   bind([]string{"up", "ctrl+k"}, "↑/↓ ⌃k/⌃j", "select"),
@@ -155,6 +159,8 @@ func (k *KeyMap) refs() []bindingRef {
 		{"detail_toggle_subtask", &k.DetailToggleSubtask},
 		{"detail_rename_subtask", &k.DetailRenameSubtask},
 		{"detail_edit_comment", &k.DetailEditComment},
+		{"detail_open_attachment", &k.DetailOpenAttachment},
+		{"detail_add_attachment", &k.DetailAddAttachment},
 		{"detail_delete_item", &k.DetailDeleteItem},
 		{"results_up", &k.ResultsUp},
 		{"results_down", &k.ResultsDown},

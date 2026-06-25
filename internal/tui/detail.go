@@ -8,11 +8,14 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"tttracker/internal/activity"
 	"tttracker/internal/app"
 	"tttracker/internal/attachment"
 	"tttracker/internal/comment"
+	"tttracker/internal/preview"
 	"tttracker/internal/subtask"
 	"tttracker/internal/ticket"
 )
@@ -177,16 +180,32 @@ func (m detailModel) Update(msg tea.Msg) (detailModel, tea.Cmd) {
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskRename, st.ID, st.Title)
 		}
-	case key.Matches(km, keys.DetailEditComment):
-		if c, ok := m.selCom(); ok {
+	case key.Matches(km, keys.DetailEditComment), key.Matches(km, keys.DetailOpenAttachment):
+		// Both default to "enter" but are separate, independently-rebindable
+		// actions, so each branch checks its own binding as well as the selection.
+		if c, ok := m.selCom(); ok && key.Matches(km, keys.DetailEditComment) {
 			return m, m.action(actionCommentEdit, c.ID, c.Body)
 		}
+		if a, ok := m.selAtt(); ok && key.Matches(km, keys.DetailOpenAttachment) {
+			// Capture the ticket now, while this detail is current; reading it later
+			// at message-handling time could attribute the result to another ticket
+			// if the user navigated away in between.
+			ticketKey, path := m.key, a.StoredPath
+			return m, func() tea.Msg { return openAttachmentMsg{ticketKey: ticketKey, path: path} }
+		}
+	case key.Matches(km, keys.DetailAddAttachment):
+		k := m.key
+		return m, func() tea.Msg { return openAttachPickerMsg{ticketKey: k} }
 	case key.Matches(km, keys.DetailDeleteItem):
 		if st, ok := m.selSub(); ok {
 			return m, m.action(actionSubtaskDelete, st.ID, "")
 		}
 		if c, ok := m.selCom(); ok {
 			return m, m.action(actionCommentDelete, c.ID, "")
+		}
+		if a, ok := m.selAtt(); ok {
+			id, name := a.ID, a.FileName
+			return m, func() tea.Msg { return askDeleteAttachmentMsg{id: id, name: name} }
 		}
 	case key.Matches(km, keys.BoardDeleteTicket):
 		k := m.key
@@ -206,18 +225,50 @@ func (m detailModel) action(kind actionKind, entityID int64, current string) tea
 
 func (m detailModel) View() string {
 	t := m.ticket
-	var b strings.Builder
-
-	b.WriteString(titleStyle.Render(fmt.Sprintf("%s  %s", m.key, t.Title)))
-	b.WriteString("\n")
+	var head strings.Builder
+	head.WriteString(titleStyle.Render(fmt.Sprintf("%s  %s", m.key, t.Title)))
+	head.WriteString("\n")
 	meta := fmt.Sprintf("status:%s  priority:%s  type:%s", t.Status, t.Priority, t.Type)
 	if len(t.Labels) > 0 {
 		meta += "  labels:" + strings.Join(t.Labels, ",")
 	}
-	b.WriteString(fieldStyle.Render(meta))
-	b.WriteString("\n\n")
+	head.WriteString(fieldStyle.Render(meta))
 
-	if desc := renderMarkdown(t.Description, m.width); strings.TrimSpace(desc) != "" {
+	// When an attachment is selected and the terminal is wide enough, split into
+	// the content on the left and a preview pane on the right.
+	var middle string
+	if att, ok := m.selAtt(); ok && m.previewWidth() > 0 {
+		pane := m.previewPane(att, m.previewWidth())
+		leftW := m.width - lipgloss.Width(pane)
+		// Clamp the left column to the pane height so the whole view fits the
+		// terminal without scrolling — otherwise a long activity log pushes the
+		// view taller than the screen and the top-aligned pane appears to float up.
+		left := lipgloss.NewStyle().Width(leftW).MaxHeight(lipgloss.Height(pane)).Render(m.bodyView(leftW))
+		middle = lipgloss.JoinHorizontal(lipgloss.Top, left, pane)
+	} else {
+		middle = m.bodyView(m.width)
+	}
+
+	// The "enter" action depends on what's selected: open an attachment, else
+	// edit a comment. Show the matching binding so the footer stays accurate.
+	activate := keys.DetailEditComment
+	if _, ok := m.selAtt(); ok {
+		activate = keys.DetailOpenAttachment
+	}
+	help := helpLine(keys.BoardMoveStatus, keys.DetailSetPriority, keys.DetailSetType, keys.DetailEditTitle,
+		keys.DetailEditLabels, keys.DetailEditDescription, keys.DetailAddSubtask, keys.DetailAddComment) + "\n" +
+		helpLine(keys.Up, keys.DetailToggleSubtask, keys.DetailRenameSubtask, activate,
+			keys.DetailAddAttachment, keys.DetailDeleteItem, keys.BoardDeleteTicket, keys.Back)
+
+	return head.String() + "\n\n" + middle + "\n\n" + help
+}
+
+// bodyView renders the description, the selectable sections (subtasks, comments,
+// attachments) and the activity log, sized to contentW columns.
+func (m detailModel) bodyView(contentW int) string {
+	var b strings.Builder
+
+	if desc := renderMarkdown(m.ticket.Description, contentW); strings.TrimSpace(desc) != "" {
 		b.WriteString(desc)
 	} else {
 		b.WriteString(helpStyle.Render("(no description)"))
@@ -241,7 +292,7 @@ func (m detailModel) View() string {
 		if s.IsDone {
 			box = "[x]"
 		}
-		b.WriteString(m.row(isSel(cursorSubtask, i), fmt.Sprintf("%s %s", box, s.Title)))
+		b.WriteString(m.row(isSel(cursorSubtask, i), fmt.Sprintf("%s %s", box, s.Title), contentW))
 	}
 
 	b.WriteString("\n")
@@ -252,7 +303,7 @@ func (m detailModel) View() string {
 		b.WriteString("\n")
 	}
 	for j, c := range m.comments {
-		b.WriteString(m.row(isSel(cursorComment, j), "• "+firstLine(c.Body)))
+		b.WriteString(m.row(isSel(cursorComment, j), "• "+firstLine(c.Body), contentW))
 	}
 
 	b.WriteString("\n")
@@ -264,7 +315,7 @@ func (m detailModel) View() string {
 	}
 	for k, a := range m.attachments {
 		size := formatSize(a.SizeBytes)
-		b.WriteString(m.row(isSel(cursorAttachment, k), a.FileName+" ("+size+")"))
+		b.WriteString(m.row(isSel(cursorAttachment, k), a.FileName+" ("+size+")", contentW))
 	}
 
 	if len(m.events) > 0 {
@@ -277,18 +328,46 @@ func (m detailModel) View() string {
 			b.WriteString("\n")
 		}
 	}
-
-	b.WriteString("\n")
-	b.WriteString(helpLine(keys.BoardMoveStatus, keys.DetailSetPriority, keys.DetailSetType, keys.DetailEditTitle,
-		keys.DetailEditLabels, keys.DetailEditDescription, keys.DetailAddSubtask, keys.DetailAddComment))
-	b.WriteString("\n")
-	b.WriteString(helpLine(keys.Up, keys.DetailToggleSubtask, keys.DetailRenameSubtask, keys.DetailEditComment,
-		keys.DetailDeleteItem, keys.BoardDeleteTicket, keys.Back))
 	return b.String()
 }
 
-// row renders one selectable line, highlighted when selected.
-func (m detailModel) row(selected bool, text string) string {
+// previewWidth returns the width of the right preview pane, or 0 when the
+// terminal is too narrow to split. The pane takes about a third of the width,
+// leaving the rest for the content.
+func (m detailModel) previewWidth() int {
+	if m.width < 100 {
+		return 0 // too narrow to split
+	}
+	w := m.width / 3
+	if w > 90 {
+		w = 90
+	}
+	if w < 28 {
+		return 0
+	}
+	return w
+}
+
+// previewPane renders the right-side preview as a full-height bordered box, sized
+// to a total width of paneW columns. The box always spans the vertical slot
+// between the header and the help line, so it reads as a panel (and gives text
+// previews room) rather than a box that shrinks to the image.
+func (m detailModel) previewPane(att attachment.Attachment, paneW int) string {
+	boxW := paneW - 2          // columnStyle adds a 1-cell border on each side
+	contentW := max(boxW-2, 8) // columnStyle's Padding(0,1) eats one cell per side
+	boxH := max(m.height-8, 4) // fills the vertical slot; border adds 2 to total
+	contentH := max(boxH-3, 2) // "Preview" + filename + blank line
+
+	header := columnTitleStyle.Render("Preview") + "\n" +
+		helpStyle.Render(ansi.Truncate(att.FileName, contentW, "…")) + "\n\n"
+	content := preview.Render(att.StoredPath, contentW, contentH)
+
+	return columnStyle.Width(boxW).Height(boxH).Render(header + content)
+}
+
+// row renders one selectable line, highlighted when selected, truncated to width.
+func (m detailModel) row(selected bool, text string, width int) string {
+	text = ansi.Truncate(text, max(width-2, 1), "…")
 	if selected {
 		return selectedStyle.Render("> "+text) + "\n"
 	}

@@ -1,43 +1,136 @@
 {
   "description": "Customize the default key bindings by creating 'keys.json' file in your '~/.local/share/tracker/' folder and write your own binding to replace default ones. The keys below show an example of how the default key bindings look like.",
   "keys": {
-    "up": ["up", "k"],
-    "down": ["down", "j"],
-    "left": ["left", "h"],
-    "right": ["right", "l"],
-    "open": ["enter"],
-    "back": ["esc"],
-    "quit": ["q"],
-    "board_new_ticket": ["n"],
-    "board_move_status": ["m"],
-    "board_move_ticket_left": ["ctrl+h"],
-    "board_move_ticket_right": ["ctrl+l"],
-    "board_delete_ticket": ["x"],
-    "board_search": ["/"],
-    "board_projects": ["p"],
-    "board_toggle_blocked": ["!"],
-    "board_toggle_inactive": ["@"],
-    "detail_set_priority": ["p"],
-    "detail_set_type": ["t"],
-    "detail_edit_title": ["r"],
-    "detail_edit_labels": ["l"],
-    "detail_edit_description": ["e"],
-    "detail_add_comment": ["c"],
-    "detail_add_subtask": ["s"],
-    "detail_toggle_subtask": [" "],
-    "detail_rename_subtask": ["R"],
-    "detail_edit_comment": ["enter"],
-    "detail_delete_item": ["d"],
-    "results_up": ["up", "ctrl+k"],
-    "results_down": ["down", "ctrl+j"],
-    "projects_new": ["n"],
-    "projects_edit": ["e"],
-    "projects_delete": ["x"],
-    "confirm_yes": ["y", "Y"],
-    "confirm_no": ["n", "N"],
-    "form_next_field": ["tab", "down"],
-    "form_prev_field": ["shift+tab", "up"],
-    "form_toggle_hidden": ["."],
-    "form_manual_entry": ["i", "tab"]
+    "up": [
+      "up",
+      "k"
+    ],
+    "down": [
+      "down",
+      "j"
+    ],
+    "left": [
+      "left",
+      "h"
+    ],
+    "right": [
+      "right",
+      "l"
+    ],
+    "open": [
+      "enter"
+    ],
+    "back": [
+      "esc"
+    ],
+    "quit": [
+      "q"
+    ],
+    "board_new_ticket": [
+      "n"
+    ],
+    "board_move_status": [
+      "m"
+    ],
+    "board_move_ticket_left": [
+      "ctrl+h"
+    ],
+    "board_move_ticket_right": [
+      "ctrl+l"
+    ],
+    "board_delete_ticket": [
+      "x"
+    ],
+    "board_search": [
+      "/"
+    ],
+    "board_projects": [
+      "p"
+    ],
+    "board_toggle_blocked": [
+      "!"
+    ],
+    "board_toggle_inactive": [
+      "@"
+    ],
+    "detail_set_priority": [
+      "p"
+    ],
+    "detail_set_type": [
+      "t"
+    ],
+    "detail_edit_title": [
+      "r"
+    ],
+    "detail_edit_labels": [
+      "l"
+    ],
+    "detail_edit_description": [
+      "e"
+    ],
+    "detail_add_comment": [
+      "c"
+    ],
+    "detail_add_subtask": [
+      "s"
+    ],
+    "detail_toggle_subtask": [
+      " "
+    ],
+    "detail_rename_subtask": [
+      "R"
+    ],
+    "detail_edit_comment": [
+      "enter"
+    ],
+    "detail_open_attachment": [
+      "enter"
+    ],
+    "detail_add_attachment": [
+      "a"
+    ],
+    "detail_delete_item": [
+      "d"
+    ],
+    "results_up": [
+      "up",
+      "ctrl+k"
+    ],
+    "results_down": [
+      "down",
+      "ctrl+j"
+    ],
+    "projects_new": [
+      "n"
+    ],
+    "projects_edit": [
+      "e"
+    ],
+    "projects_delete": [
+      "x"
+    ],
+    "confirm_yes": [
+      "y",
+      "Y"
+    ],
+    "confirm_no": [
+      "n",
+      "N"
+    ],
+    "form_next_field": [
+      "tab",
+      "down"
+    ],
+    "form_prev_field": [
+      "shift+tab",
+      "up"
+    ],
+    "form_toggle_hidden": [
+      "."
+    ],
+    "form_manual_entry": [
+      "i",
+      "tab"
+    ]
   }
 }

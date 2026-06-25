@@ -12,6 +12,7 @@ import (
 	"tttracker/internal/activity"
 	"tttracker/internal/app"
 	"tttracker/internal/apperr"
+	"tttracker/internal/attachment"
 	"tttracker/internal/db"
 	"tttracker/internal/ticket"
 )
@@ -278,6 +279,90 @@ func TestAttachmentLifecycle(t *testing.T) {
 	types := countTypes(mustEvents(t, a, tk.ID))
 	if types[activity.AttachmentAdded] != 2 || types[activity.AttachmentRemoved] != 1 {
 		t.Fatalf("attachment events wrong: %v", types)
+	}
+}
+
+// Remove classifies its failure: a pre-commit failure (e.g. not found) is a plain
+// error with nothing deleted, while a post-commit file-cleanup failure is wrapped
+// in ErrFileCleanup with the metadata already gone.
+func TestAttachmentRemoveErrorClassification(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "x"}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+
+	src := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(src, []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+	at, err := a.Attachments.Attach(ctx, "PET-1", src)
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+
+	// Pre-commit failure: a missing row is a real error, not ErrFileCleanup, and
+	// removes nothing.
+	if err := a.Attachments.Remove(ctx, 999999); err == nil || errors.Is(err, attachment.ErrFileCleanup) {
+		t.Fatalf("not-found remove should be a plain error, got %v", err)
+	}
+	if list, _ := a.Attachments.List(ctx, "PET-1"); len(list) != 1 {
+		t.Fatalf("not-found remove must delete nothing, got %d", len(list))
+	}
+
+	// Post-commit failure: make the stored file un-removable (replace it with a
+	// non-empty directory). The metadata is removed; the error wraps ErrFileCleanup.
+	if err := os.Remove(at.StoredPath); err != nil {
+		t.Fatalf("remove stored: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(at.StoredPath, "blocker"), 0o755); err != nil {
+		t.Fatalf("mkdir blocker: %v", err)
+	}
+	err = a.Attachments.Remove(ctx, at.ID)
+	if !errors.Is(err, attachment.ErrFileCleanup) {
+		t.Fatalf("file-cleanup failure should wrap ErrFileCleanup, got %v", err)
+	}
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("file-cleanup failure should preserve the filesystem error, got %v", err)
+	}
+	if list, _ := a.Attachments.List(ctx, "PET-1"); len(list) != 0 {
+		t.Fatalf("metadata must be gone despite the file error, got %d", len(list))
+	}
+}
+
+// Deleting a ticket removes its attachment files from disk, not just the DB
+// metadata — otherwise a reused key (NextNumber is MAX(number)+1) would inherit
+// the old ticket's attachment directory.
+func TestDeleteTicketRemovesAttachmentFiles(t *testing.T) {
+	a, _ := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	if _, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "x"}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+
+	src := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(src, []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+	at, err := a.Attachments.Attach(ctx, "PET-1", src)
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	if _, err := os.Stat(at.StoredPath); err != nil {
+		t.Fatalf("stored file should exist before delete: %v", err)
+	}
+
+	if err := a.Tickets.Delete(ctx, "PET-1"); err != nil {
+		t.Fatalf("delete ticket: %v", err)
+	}
+	if _, err := os.Stat(at.StoredPath); !os.IsNotExist(err) {
+		t.Fatalf("attachment file should be removed after ticket delete, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(at.StoredPath)); !os.IsNotExist(err) {
+		t.Fatalf("ticket attachment dir should be removed, stat err=%v", err)
 	}
 }
 

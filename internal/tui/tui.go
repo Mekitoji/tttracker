@@ -29,6 +29,7 @@ const (
 	screenSearch
 	screenProjectEdit
 	screenConfirm
+	screenAttachPicker
 )
 
 type actionKind int
@@ -97,13 +98,15 @@ type model struct {
 	projectEdit   projectEditModel
 	projectCreate projectCreateModel
 	confirm       confirmModel
+	attachPicker  attachPickerModel
 	confirmReturn screen
 	finder        repoFinder
 
 	pending pendingState
+	attachmentFlowState
 
 	width, height int
-	status        string
+	status        string // foreground status from synchronous actions
 }
 
 // Run launches the terminal UI over the given application facade.
@@ -139,6 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.form = m.form.setSize(m.width, m.height)
 		m.search = m.search.setSize(m.width, m.height)
 		m.projectEdit = m.projectEdit.setSize(m.width, m.height)
+		m.attachPicker = m.attachPicker.setSize(m.width, m.height)
 		return m, nil
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
@@ -185,6 +189,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenPicker, screenActionForm:
 			m.screen = m.pending.origin
 			m.pending = pendingState{}
+		case screenAttachPicker:
+			m.screen = screenDetail
 		}
 		return m, nil
 	case newProjectFormMsg:
@@ -234,9 +240,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenConfirm
 		return m, nil
 	case deleteProjectMsg:
-		if err := m.app.Projects.Delete(m.ctx, msg.key); err != nil {
-			m.status = err.Error()
-		}
+		// The project/files are gone even if cleanup warned; rebuild the list either
+		// way and show a cleanup failure as a warning, a real failure as an error.
+		m.status = deleteStatus(m.app.Projects.Delete(m.ctx, msg.key))
 		pm, err := newProjectsModel(m.app, m.ctx)
 		if err != nil {
 			m.status = err.Error()
@@ -246,9 +252,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenProjects
 		return m, nil
 	case deleteTicketMsg:
-		if err := m.app.Tickets.Delete(m.ctx, msg.key); err != nil {
-			m.status = err.Error()
-		}
+		m.status = deleteStatus(m.app.Tickets.Delete(m.ctx, msg.key))
 		if bm, err := m.board.reload(m.app, m.ctx); err == nil {
 			m.board = bm
 		}
@@ -265,6 +269,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = screenBoard
 		return m, nil
+	case openAttachmentMsg, openAttachPickerMsg, attachFileMsg, askDeleteAttachmentMsg,
+		deleteAttachmentMsg, attachmentOperationFinished:
+		return m.handleAttachmentMsg(msg)
 	case submitFormMsg:
 		if m.screen == screenActionForm {
 			return m.applyPending(msg.value)
@@ -302,6 +309,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.projectCreate, cmd = m.projectCreate.Update(msg)
 	case screenConfirm:
 		m.confirm, cmd = m.confirm.Update(msg)
+	case screenAttachPicker:
+		m.attachPicker, cmd = m.attachPicker.Update(msg)
 	case screenTicketForm, screenActionForm:
 		m.form, cmd = m.form.Update(msg)
 	}
@@ -523,9 +532,11 @@ func (m model) View() string {
 		body = m.projectEdit.View()
 	case screenConfirm:
 		body = m.confirm.View()
+	case screenAttachPicker:
+		body = m.attachPicker.View()
 	}
 	if m.status != "" {
 		body += "\n" + errorStyle.Render(m.status)
 	}
-	return body
+	return body + m.attachmentStatusView()
 }

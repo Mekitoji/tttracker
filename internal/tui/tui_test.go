@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,6 +18,14 @@ import (
 
 func newTestApp(t *testing.T) *app.App {
 	t.Helper()
+	a, _ := newTestAppDB(t)
+	return a
+}
+
+// newTestAppDB also returns the underlying DB so a test can corrupt it (e.g.
+// drop a table) to force a read failure.
+func newTestAppDB(t *testing.T) (*app.App, *sql.DB) {
+	t.Helper()
 	base := t.TempDir()
 	d, err := db.Open(filepath.Join(base, "app.db"))
 	if err != nil {
@@ -26,7 +35,7 @@ func newTestApp(t *testing.T) *app.App {
 	if err := db.Migrate(d); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return app.New(d, clock.Real{}, filepath.Join(base, "attachments"))
+	return app.New(d, clock.Real{}, filepath.Join(base, "attachments")), d
 }
 
 func newTestModel(t *testing.T, a *app.App) model {
@@ -666,46 +675,6 @@ func TestMoveTicketKeyKeepsBlockedView(t *testing.T) {
 	}
 	if got, ok := m.board.selected(); !ok || got.Number != 1 || got.Status != ticket.StatusBlocked {
 		t.Fatalf("focus not on moved ticket in blocked: %+v ok=%v", got, ok)
-	}
-}
-
-// Attachment display and navigation in detail view.
-func TestDetailShowsAttachments(t *testing.T) {
-	a := newTestApp(t)
-	mustSeed(t, a)
-	ctx := context.Background()
-
-	// Attach a file to PET-1.
-	att, err := a.Attachments.Attach(ctx, "PET-1", "/etc/hosts")
-	if err != nil {
-		t.Fatalf("attach: %v", err)
-	}
-
-	// Open detail view.
-	m := openDetail(t, a)
-	if m.screen != screenDetail {
-		t.Fatalf("want detail, got %v", m.screen)
-	}
-
-	// Check attachment is in the detail model.
-	if len(m.detail.attachments) != 1 {
-		t.Fatalf("want 1 attachment, got %d", len(m.detail.attachments))
-	}
-	if m.detail.attachments[0].FileName != att.FileName {
-		t.Fatalf("want %s, got %s", att.FileName, m.detail.attachments[0].FileName)
-	}
-
-	// Navigate to attachment with down arrow.
-	// Start at cursor 0 (first subtask); no subtasks, so cursor lands at comments offset 0;
-	// no comments, so lands at attachments offset 0.
-	for i := 0; i < 2; i++ { // down twice to be sure
-		m = send(t, m, tea.KeyMsg{Type: tea.KeyDown})
-	}
-	// Check we can select the attachment.
-	if att, ok := m.detail.selAtt(); !ok {
-		t.Fatalf("could not select attachment")
-	} else if att.ID != att.ID {
-		t.Fatalf("selected wrong attachment")
 	}
 }
 

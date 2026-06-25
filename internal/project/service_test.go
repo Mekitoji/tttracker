@@ -2,7 +2,9 @@ package project_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tttracker/internal/clock"
@@ -11,12 +13,16 @@ import (
 )
 
 // fakeRemover records the keys it was asked to clean up, standing in for the
-// attachment service so the project package needn't depend on it.
-type fakeRemover struct{ called []string }
+// attachment service so the project package needn't depend on it. err, if set, is
+// returned to simulate a file-cleanup failure.
+type fakeRemover struct {
+	called []string
+	err    error
+}
 
 func (f *fakeRemover) RemoveProjectFiles(key string) error {
 	f.called = append(f.called, key)
-	return nil
+	return f.err
 }
 
 func newService(t *testing.T, rm project.AttachmentRemover) (*project.Service, context.Context) {
@@ -47,6 +53,23 @@ func TestDeleteRemovesProjectAndCleansFiles(t *testing.T) {
 	}
 	if _, err := svc.Get(ctx, "PET"); err == nil {
 		t.Fatal("project should be gone after delete")
+	}
+}
+
+func TestDeletePropagatesCleanupError(t *testing.T) {
+	rm := &fakeRemover{err: errors.New("cleanup boom")}
+	svc, ctx := newService(t, rm)
+	if _, err := svc.Create(ctx, "PET", "Pet", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.Delete(ctx, "PET")
+	if err == nil || !strings.Contains(err.Error(), "cleanup boom") {
+		t.Fatalf("delete should propagate the cleanup error, got %v", err)
+	}
+	// The project is still deleted despite the cleanup failure.
+	if _, err := svc.Get(ctx, "PET"); err == nil {
+		t.Fatal("project should be gone even when cleanup fails")
 	}
 }
 

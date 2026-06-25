@@ -14,18 +14,27 @@ import (
 	"tttracker/internal/project"
 )
 
+// AttachmentRemover deletes the on-disk attachment files for a ticket. It is
+// satisfied by the attachment service and injected here so ticket deletion can
+// clean up files without the ticket package importing the attachment package
+// (which already imports ticket).
+type AttachmentRemover interface {
+	RemoveTicketFiles(projectKey, ticketKey string) error
+}
+
 // Service holds the ticket business logic. Every mutation records an activity
 // event in the same transaction as the state change.
 type Service struct {
-	db       *sql.DB
-	tickets  *Repository
-	projects *project.Repository
-	activity *activity.Repository
-	clock    clock.Clock
+	db          *sql.DB
+	tickets     *Repository
+	projects    *project.Repository
+	activity    *activity.Repository
+	clock       clock.Clock
+	attachments AttachmentRemover
 }
 
-func NewService(database *sql.DB, tickets *Repository, projects *project.Repository, events *activity.Repository, clk clock.Clock) *Service {
-	return &Service{db: database, tickets: tickets, projects: projects, activity: events, clock: clk}
+func NewService(database *sql.DB, tickets *Repository, projects *project.Repository, events *activity.Repository, clk clock.Clock, attachments AttachmentRemover) *Service {
+	return &Service{db: database, tickets: tickets, projects: projects, activity: events, clock: clk, attachments: attachments}
 }
 
 // ResolveID resolves a display key (e.g. "PET-12") to a ticket id using the
@@ -137,14 +146,18 @@ func (s *Service) List(ctx context.Context, projectKey string) ([]Ticket, error)
 
 // Delete removes the ticket and (via DB cascade) its subtasks, comments,
 // attachment metadata, and activity; the FTS index is cleaned by the ticket
-// trigger. Attachment files on disk are not cleaned here — attachments aren't
-// yet creatable in the UI; mirror project deletion's file cleanup when they are.
+// trigger. After the transaction commits, the ticket's attachment files are
+// removed (filesystem work is not part of the transaction); a cleanup failure is
+// returned wrapped in attachment.ErrFileCleanup — a non-fatal warning, since the
+// ticket is already gone. This also stops a reused key — keys can repeat since
+// NextNumber is MAX(number)+1 — from inheriting stale files.
 func (s *Service) Delete(ctx context.Context, key string) error {
 	pk, num, err := ParseKey(key)
 	if err != nil {
 		return err
 	}
-	return db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+	var projectKey, ticketKey string
+	if err := db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		proj, err := s.projects.GetByKey(ctx, tx, pk)
 		if err != nil {
 			return err
@@ -153,8 +166,15 @@ func (s *Service) Delete(ctx context.Context, key string) error {
 		if err != nil {
 			return err
 		}
+		// Capture the canonical keys (matching how files were stored) for cleanup.
+		projectKey, ticketKey = proj.Key, Key(proj.Key, t.Number)
 		return s.tickets.Delete(ctx, tx, t.ID)
-	})
+	}); err != nil {
+		return err
+	}
+	// The ticket is gone; surface a file-cleanup failure as a non-fatal warning
+	// (attachment.ErrFileCleanup) instead of dropping it.
+	return s.attachments.RemoveTicketFiles(projectKey, ticketKey)
 }
 
 // mutate loads the ticket addressed by key, runs apply (which mutates the
