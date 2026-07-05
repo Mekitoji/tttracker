@@ -5,14 +5,19 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
+	"tttracker/internal/activity"
 	"tttracker/internal/app"
+	"tttracker/internal/attachment"
 	"tttracker/internal/clock"
 	"tttracker/internal/db"
 	"tttracker/internal/editor"
+	"tttracker/internal/subtask"
 	"tttracker/internal/ticket"
 )
 
@@ -716,5 +721,105 @@ func TestDetailCursorPreservedAcrossAction(t *testing.T) {
 	}
 	if !sel.IsDone {
 		t.Fatal("third subtask should be toggled done")
+	}
+}
+
+// The detail view must never exceed the terminal in either dimension — long
+// title/labels, many items and a long activity log are all bounded.
+func TestDetailViewFitsScreen(t *testing.T) {
+	m := detailModel{
+		key: "PET-1",
+		ticket: ticket.Ticket{
+			Title:  strings.Repeat("a very long title ", 20),
+			Labels: []string{strings.Repeat("label", 40)},
+		},
+		subtasks: make([]subtask.Subtask, 8),
+		events:   make([]activity.Event, 200),
+		width:    80,
+		height:   24,
+	}
+	m = m.clampScroll()
+
+	assertFits := func(label string, m detailModel) {
+		t.Helper()
+		lines := strings.Split(m.View(), "\n")
+		if len(lines) > m.height {
+			t.Fatalf("%s: view has %d lines, exceeds height %d", label, len(lines), m.height)
+		}
+		for i, ln := range lines {
+			if w := lipgloss.Width(ln); w > m.width {
+				t.Fatalf("%s: line %d width %d exceeds %d: %q", label, i, w, m.width, ln)
+			}
+		}
+	}
+
+	assertFits("initial", m)
+	for i := 0; i < 100; i++ { // scroll to the bottom
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	}
+	assertFits("scrolled", m)
+	m = m.setSize(40, 12) // shrink
+	assertFits("resized", m)
+
+	// Preview mode (wide terminal, attachment selected) splits into two columns
+	// that together must still fit the width and height.
+	src := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(src, []byte("hello preview"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	mp := detailModel{
+		key:         "PET-1",
+		ticket:      ticket.Ticket{Title: "t"},
+		subtasks:    make([]subtask.Subtask, 3),
+		attachments: []attachment.Attachment{{FileName: "note.txt", StoredPath: src}},
+		events:      make([]activity.Event, 50),
+		width:       120,
+		height:      30,
+	}
+	mp.cursor = 3 // the attachment sits after the 3 subtasks
+	mp = mp.clampScroll()
+	if _, ok := mp.selAtt(); !ok {
+		t.Fatal("attachment should be selected for preview mode")
+	}
+	assertFits("preview", mp)
+}
+
+// Moving the cursor keeps the selected row inside the viewport; manual scroll
+// moves the window freely and clamps at the ends.
+func TestDetailBodyScrollFollowsCursor(t *testing.T) {
+	m := detailModel{
+		key:      "PET-1",
+		ticket:   ticket.Ticket{Title: "t"},
+		subtasks: make([]subtask.Subtask, 30),
+		width:    80,
+		height:   15,
+	}
+	m = m.clampScroll()
+
+	for i := 0; i < 20; i++ { // move the cursor well past the first window
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if m.cursor != 20 {
+		t.Fatalf("cursor should be 20, got %d", m.cursor)
+	}
+	_, selLine := m.bodyView(m.contentWidth())
+	if selLine < m.bodyScroll || selLine >= m.bodyScroll+m.bodyBudget() {
+		t.Fatalf("selected line %d not visible in [%d,%d)", selLine, m.bodyScroll, m.bodyScroll+m.bodyBudget())
+	}
+
+	// Manual scroll up moves the window and is not snapped back to the cursor.
+	before := m.bodyScroll
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	if m.bodyScroll >= before {
+		t.Fatalf("ctrl+u should scroll up, was %d now %d", before, m.bodyScroll)
+	}
+
+	// Scrolling down past the end clamps.
+	for i := 0; i < 100; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	}
+	body, _ := m.bodyView(m.contentWidth())
+	if maxScroll := lineCount(body) - m.bodyBudget(); m.bodyScroll != maxScroll {
+		t.Fatalf("scroll should clamp at %d, got %d", maxScroll, m.bodyScroll)
 	}
 }

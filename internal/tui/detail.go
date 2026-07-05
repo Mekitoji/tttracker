@@ -47,6 +47,7 @@ type detailModel struct {
 	attachments []attachment.Attachment
 	events      []activity.Event
 	cursor      int // index into items()
+	bodyScroll  int // top line of the body viewport (see View)
 	width       int
 	height      int
 }
@@ -81,7 +82,78 @@ func (m detailModel) reload(a *app.App, ctx context.Context) (detailModel, error
 	}
 	m.ticket = *t
 	m.subtasks, m.comments, m.attachments, m.events = subs, coms, atts, evs
-	return m.clampCursor(), nil
+	return m.clampCursor().clampScroll(), nil
+}
+
+// bodyBudget is the number of rows the body viewport may occupy: the terminal
+// height minus the fixed chrome (2 header + 2 separators + 2 help).
+func (m detailModel) bodyBudget() int { return max(m.height-6, 1) }
+
+// contentWidth is the width available to the body: the full width, or the left
+// column when the preview pane is shown.
+func (m detailModel) contentWidth() int {
+	if _, ok := m.selAtt(); ok {
+		if pw := m.previewWidth(); pw > 0 {
+			return m.width - pw
+		}
+	}
+	return m.width
+}
+
+// clampScroll keeps the body scroll offset within [0, maxScroll] for the current
+// content and budget.
+func (m detailModel) clampScroll() detailModel {
+	body, _ := m.bodyView(m.contentWidth())
+	m.bodyScroll = clampScroll(m.bodyScroll, lineCount(body), m.bodyBudget())
+	return m
+}
+
+// followCursor scrolls the body so the selected row stays visible.
+func (m detailModel) followCursor() detailModel {
+	body, selLine := m.bodyView(m.contentWidth())
+	m.bodyScroll = scrollToLine(m.bodyScroll, lineCount(body), m.bodyBudget(), selLine)
+	return m
+}
+
+// scrollBody moves the viewport by delta rows (manual scroll), bounds-clamped.
+func (m detailModel) scrollBody(delta int) detailModel {
+	body, _ := m.bodyView(m.contentWidth())
+	m.bodyScroll = clampScroll(m.bodyScroll+delta, lineCount(body), m.bodyBudget())
+	return m
+}
+
+// lineCount counts rendered lines the way View does: trailing newlines are not
+// a final empty line.
+func lineCount(s string) int {
+	if s = strings.TrimRight(s, "\n"); s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+// clampScroll bounds a scroll offset to [0, max(total-budget, 0)].
+func clampScroll(scroll, total, budget int) int {
+	if hi := max(total-budget, 0); scroll > hi {
+		scroll = hi
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	return scroll
+}
+
+// scrollToLine nudges scroll (already bounds-clamped) so line is within the window.
+func scrollToLine(scroll, total, budget, line int) int {
+	scroll = clampScroll(scroll, total, budget)
+	switch {
+	case line < 0:
+		return scroll
+	case line < scroll:
+		return line
+	case line >= scroll+budget:
+		return line - budget + 1
+	}
+	return scroll
 }
 
 // items is the flat, ordered list of selectable rows: subtasks, then comments,
@@ -152,10 +224,16 @@ func (m detailModel) Update(msg tea.Msg) (detailModel, tea.Cmd) {
 		if m.cursor > 0 {
 			m.cursor--
 		}
+		return m.followCursor(), nil
 	case key.Matches(km, keys.Down):
 		if m.cursor < len(m.items())-1 {
 			m.cursor++
 		}
+		return m.followCursor(), nil
+	case key.Matches(km, keys.DetailScrollUp):
+		return m.scrollBody(-m.bodyBudget() / 2), nil
+	case key.Matches(km, keys.DetailScrollDown):
+		return m.scrollBody(m.bodyBudget() / 2), nil
 	case key.Matches(km, keys.BoardMoveStatus):
 		return m, m.action(actionStatus, 0, string(m.ticket.Status))
 	case key.Matches(km, keys.DetailSetPriority):
@@ -225,28 +303,41 @@ func (m detailModel) action(kind actionKind, entityID int64, current string) tea
 
 func (m detailModel) View() string {
 	t := m.ticket
-	var head strings.Builder
-	head.WriteString(titleStyle.Render(fmt.Sprintf("%s  %s", m.key, t.Title)))
-	head.WriteString("\n")
-	meta := fmt.Sprintf("status:%s  priority:%s  type:%s", t.Status, t.Priority, t.Type)
-	if len(t.Labels) > 0 {
-		meta += "  labels:" + strings.Join(t.Labels, ",")
-	}
-	head.WriteString(fieldStyle.Render(meta))
 
-	// When an attachment is selected and the terminal is wide enough, split into
-	// the content on the left and a preview pane on the right.
+	// Header: exactly two single-line rows, truncated so a long title/label set
+	// can never wrap and push the layout past the screen.
+	titleText := fmt.Sprintf("%s  %s", m.key, t.Title)
+	metaText := fmt.Sprintf("status:%s  priority:%s  type:%s", t.Status, t.Priority, t.Type)
+	if len(t.Labels) > 0 {
+		metaText += "  labels:" + strings.Join(t.Labels, ",")
+	}
+	head := titleStyle.Render(ansi.Truncate(titleText, m.width, "…")) + "\n" +
+		fieldStyle.Render(ansi.Truncate(metaText, m.width, "…"))
+
+	// Body: render fully, then show a window of bodyBudget rows at bodyScroll so
+	// nothing ever exceeds the screen; the rest is reachable by scrolling.
+	budget := m.bodyBudget()
+	contentW := m.contentWidth()
+	body, _ := m.bodyView(contentW)
+	lines := strings.Split(strings.TrimRight(body, "\n"), "\n")
+	scroll := clampScroll(m.bodyScroll, len(lines), budget)
+	end := min(scroll+budget, len(lines))
+	window := strings.Join(lines[scroll:end], "\n")
+
 	var middle string
 	if att, ok := m.selAtt(); ok && m.previewWidth() > 0 {
 		pane := m.previewPane(att, m.previewWidth())
-		leftW := m.width - lipgloss.Width(pane)
-		// Clamp the left column to the pane height so the whole view fits the
-		// terminal without scrolling — otherwise a long activity log pushes the
-		// view taller than the screen and the top-aligned pane appears to float up.
-		left := lipgloss.NewStyle().Width(leftW).MaxHeight(lipgloss.Height(pane)).Render(m.bodyView(leftW))
+		left := lipgloss.NewStyle().Width(contentW).Height(budget).Render(window)
 		middle = lipgloss.JoinHorizontal(lipgloss.Top, left, pane)
 	} else {
-		middle = m.bodyView(m.width)
+		middle = lipgloss.NewStyle().Height(budget).Render(window)
+	}
+
+	// The separator line doubles as a scroll indicator when the body overflows.
+	sep := ""
+	if len(lines) > budget {
+		sep = helpStyle.Render(ansi.Truncate(
+			fmt.Sprintf("  lines %d–%d of %d  (⌃u/⌃d to scroll)", scroll+1, end, len(lines)), m.width, "…"))
 	}
 
 	// The "enter" action depends on what's selected: open an attachment, else
@@ -255,18 +346,21 @@ func (m detailModel) View() string {
 	if _, ok := m.selAtt(); ok {
 		activate = keys.DetailOpenAttachment
 	}
-	help := helpLine(keys.BoardMoveStatus, keys.DetailSetPriority, keys.DetailSetType, keys.DetailEditTitle,
-		keys.DetailEditLabels, keys.DetailEditDescription, keys.DetailAddSubtask, keys.DetailAddComment) + "\n" +
-		helpLine(keys.Up, keys.DetailToggleSubtask, keys.DetailRenameSubtask, activate,
-			keys.DetailAddAttachment, keys.DetailDeleteItem, keys.BoardDeleteTicket, keys.Back)
+	help := ansi.Truncate(helpLine(keys.BoardMoveStatus, keys.DetailSetPriority, keys.DetailSetType, keys.DetailEditTitle,
+		keys.DetailEditLabels, keys.DetailEditDescription, keys.DetailAddSubtask, keys.DetailAddComment), m.width, "…") + "\n" +
+		ansi.Truncate(helpLine(keys.Up, keys.DetailScrollUp, keys.DetailToggleSubtask, keys.DetailRenameSubtask, activate,
+			keys.DetailAddAttachment, keys.DetailDeleteItem, keys.BoardDeleteTicket, keys.Back), m.width, "…")
 
-	return head.String() + "\n\n" + middle + "\n\n" + help
+	return head + "\n\n" + middle + "\n" + sep + "\n" + help
 }
 
 // bodyView renders the description, the selectable sections (subtasks, comments,
-// attachments) and the activity log, sized to contentW columns.
-func (m detailModel) bodyView(contentW int) string {
+// attachments) and the full activity log, sized to contentW columns. It also
+// returns the line index of the selected row (or -1) so the viewport can keep it
+// in view. The result is windowed by View — it may be taller than the screen.
+func (m detailModel) bodyView(contentW int) (string, int) {
 	var b strings.Builder
+	selLine := -1
 
 	if desc := renderMarkdown(m.ticket.Description, contentW); strings.TrimSpace(desc) != "" {
 		b.WriteString(desc)
@@ -276,8 +370,13 @@ func (m detailModel) bodyView(contentW int) string {
 	}
 
 	sel, hasSel := m.selected()
-	isSel := func(section cursorSection, index int) bool {
-		return hasSel && sel.section == section && sel.index == index
+	// writeRow appends a selectable row, recording its line index when selected.
+	writeRow := func(section cursorSection, index int, text string) {
+		selected := hasSel && sel.section == section && sel.index == index
+		if selected {
+			selLine = strings.Count(b.String(), "\n")
+		}
+		b.WriteString(m.row(selected, text, contentW))
 	}
 
 	b.WriteString("\n")
@@ -292,7 +391,7 @@ func (m detailModel) bodyView(contentW int) string {
 		if s.IsDone {
 			box = "[x]"
 		}
-		b.WriteString(m.row(isSel(cursorSubtask, i), fmt.Sprintf("%s %s", box, s.Title), contentW))
+		writeRow(cursorSubtask, i, fmt.Sprintf("%s %s", box, s.Title))
 	}
 
 	b.WriteString("\n")
@@ -303,7 +402,7 @@ func (m detailModel) bodyView(contentW int) string {
 		b.WriteString("\n")
 	}
 	for j, c := range m.comments {
-		b.WriteString(m.row(isSel(cursorComment, j), "• "+firstLine(c.Body), contentW))
+		writeRow(cursorComment, j, "• "+firstLine(c.Body))
 	}
 
 	b.WriteString("\n")
@@ -314,8 +413,7 @@ func (m detailModel) bodyView(contentW int) string {
 		b.WriteString("\n")
 	}
 	for k, a := range m.attachments {
-		size := formatSize(a.SizeBytes)
-		b.WriteString(m.row(isSel(cursorAttachment, k), a.FileName+" ("+size+")", contentW))
+		writeRow(cursorAttachment, k, a.FileName+" ("+formatSize(a.SizeBytes)+")")
 	}
 
 	if len(m.events) > 0 {
@@ -323,12 +421,12 @@ func (m detailModel) bodyView(contentW int) string {
 		b.WriteString(columnTitleStyle.Render("Activity"))
 		b.WriteString("\n")
 		for _, e := range m.events {
-			b.WriteString(fieldStyle.Render(fmt.Sprintf("  %s  %s",
-				e.CreatedAt.Local().Format("2006-01-02 15:04"), e.Type)))
+			line := fmt.Sprintf("  %s  %s", e.CreatedAt.Local().Format("2006-01-02 15:04"), e.Type)
+			b.WriteString(fieldStyle.Render(ansi.Truncate(line, max(contentW, 1), "…")))
 			b.WriteString("\n")
 		}
 	}
-	return b.String()
+	return b.String(), selLine
 }
 
 // previewWidth returns the width of the right preview pane, or 0 when the
@@ -376,7 +474,7 @@ func (m detailModel) row(selected bool, text string, width int) string {
 
 func (m detailModel) setSize(w, h int) detailModel {
 	m.width, m.height = w, h
-	return m
+	return m.clampScroll()
 }
 
 func renderMarkdown(s string, width int) string {

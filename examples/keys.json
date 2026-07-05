@@ -89,6 +89,12 @@
     "detail_add_attachment": [
       "a"
     ],
+    "detail_scroll_up": [
+      "ctrl+u"
+    ],
+    "detail_scroll_down": [
+      "ctrl+d"
+    ],
     "detail_delete_item": [
       "d"
     ],

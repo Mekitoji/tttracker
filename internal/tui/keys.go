@@ -45,6 +45,8 @@ type KeyMap struct {
 	DetailEditComment     key.Binding
 	DetailOpenAttachment  key.Binding
 	DetailAddAttachment   key.Binding
+	DetailScrollUp        key.Binding
+	DetailScrollDown      key.Binding
 	DetailDeleteItem      key.Binding
 
 	// shared text-input result lists (search, repo finder)
@@ -106,6 +108,8 @@ func DefaultKeyMap() KeyMap {
 		DetailEditComment:     bind([]string{"enter"}, "enter", "edit-comment"),
 		DetailOpenAttachment:  bind([]string{"enter"}, "enter", "open"),
 		DetailAddAttachment:   bind([]string{"a"}, "a", "attach"),
+		DetailScrollUp:        bind([]string{"ctrl+u"}, "⌃u/⌃d", "scroll"),
+		DetailScrollDown:      bind([]string{"ctrl+d"}, "", ""),
 		DetailDeleteItem:      bind([]string{"d"}, "d", "delete"),
 
 		ResultsUp:   bind([]string{"up", "ctrl+k"}, "↑/↓ ⌃k/⌃j", "select"),
@@ -161,6 +165,8 @@ func (k *KeyMap) refs() []bindingRef {
 		{"detail_edit_comment", &k.DetailEditComment},
 		{"detail_open_attachment", &k.DetailOpenAttachment},
 		{"detail_add_attachment", &k.DetailAddAttachment},
+		{"detail_scroll_up", &k.DetailScrollUp},
+		{"detail_scroll_down", &k.DetailScrollDown},
 		{"detail_delete_item", &k.DetailDeleteItem},
 		{"results_up", &k.ResultsUp},
 		{"results_down", &k.ResultsDown},
