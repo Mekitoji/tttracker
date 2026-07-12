@@ -5,9 +5,13 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 )
 
 func writeTemp(t *testing.T, name string, data []byte) string {
@@ -22,8 +26,8 @@ func writeTemp(t *testing.T, name string, data []byte) string {
 func writePNG(t *testing.T, name string, w, h int) string {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			img.Set(x, y, color.RGBA{R: uint8(x * 40), G: uint8(y * 40), B: 128, A: 255})
 		}
 	}
@@ -130,8 +134,8 @@ func TestImagePreviewerPluggableAndCached(t *testing.T) {
 
 func TestHalfBlocksAveragesSolidColor(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
-	for y := 0; y < 20; y++ {
-		for x := 0; x < 20; x++ {
+	for y := range 20 {
+		for x := range 20 {
 			img.Set(x, y, color.RGBA{R: 200, G: 30, B: 40, A: 255})
 		}
 	}
@@ -146,4 +150,115 @@ func clearImgCache() {
 	cacheMu.Lock()
 	imgCache = map[string]string{}
 	cacheMu.Unlock()
+}
+
+func TestDetectKindImageExtensions(t *testing.T) {
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".PNG", ".WebP"} {
+		if got := DetectKind("x" + ext); got != KindImage {
+			t.Errorf("DetectKind(%q) = %v, want KindImage", ext, got)
+		}
+	}
+}
+
+func TestRenderBMPAndTIFF(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 12, 12))
+	for y := range 12 {
+		for x := range 12 {
+			img.Set(x, y, color.RGBA{R: uint8(x * 20), G: uint8(y * 20), B: 90, A: 255})
+		}
+	}
+	cases := map[string]func(*os.File) error{
+		"pic.bmp":  func(f *os.File) error { return bmp.Encode(f, img) },
+		"pic.tiff": func(f *os.File) error { return tiff.Encode(f, img, nil) },
+	}
+	for name, enc := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), name)
+			f, err := os.Create(p)
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if err := enc(f); err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			_ = f.Close()
+			if out := Render(p, 10, 6); !strings.Contains(out, "▀") {
+				t.Fatalf("%s should render a half-block thumbnail, got %q", name, out)
+			}
+		})
+	}
+}
+
+func TestDetectKindVideo(t *testing.T) {
+	for _, ext := range []string{".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".MP4"} {
+		if got := DetectKind("clip" + ext); got != KindVideo {
+			t.Errorf("DetectKind(%q) = %v, want KindVideo", ext, got)
+		}
+	}
+}
+
+func TestRenderVideoFrame(t *testing.T) {
+	ff, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	vid := filepath.Join(t.TempDir(), "clip.mp4")
+	if out, err := exec.Command(ff, "-y", "-f", "lavfi",
+		"-i", "color=c=red:s=64x64:d=1", "-pix_fmt", "yuv420p", vid).CombinedOutput(); err != nil {
+		t.Skipf("could not create test video: %v (%s)", err, out)
+	}
+
+	out := Render(vid, 12, 6)
+	if strings.Contains(out, "install ffmpeg") || strings.Contains(out, "cannot render") {
+		t.Fatalf("video preview should have rendered a frame, got %q", out)
+	}
+	if !strings.Contains(out, "▀") {
+		t.Fatalf("expected a half-block frame from the video, got %q", out)
+	}
+}
+
+func TestDetectKindPDF(t *testing.T) {
+	if got := DetectKind("doc.pdf"); got != KindPDF {
+		t.Errorf("DetectKind(.pdf) = %v, want KindPDF", got)
+	}
+	if got := DetectKind("doc.PDF"); got != KindPDF {
+		t.Errorf("DetectKind(.PDF) = %v, want KindPDF", got)
+	}
+}
+
+// minimalPDF is a hand-written one-page PDF (poppler reconstructs the xref).
+const minimalPDF = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << >> >>
+endobj
+4 0 obj
+<< /Length 30 >>
+stream
+1 0 0 RG 20 20 260 260 re S
+endstream
+endobj
+trailer
+<< /Root 1 0 R /Size 5 >>
+%%EOF
+`
+
+func TestRenderPDFPage(t *testing.T) {
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Skip("pdftoppm (poppler) not installed")
+	}
+	p := writeTemp(t, "doc.pdf", []byte(minimalPDF))
+
+	out := Render(p, 12, 8)
+	if strings.Contains(out, "install poppler") || strings.Contains(out, "cannot render") {
+		t.Skipf("pdftoppm could not rasterise the test PDF: %q", out)
+	}
+	if !strings.Contains(out, "▀") {
+		t.Fatalf("expected a half-block render of the first PDF page, got %q", out)
+	}
 }

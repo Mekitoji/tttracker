@@ -340,7 +340,8 @@ func (m detailModel) View() string {
 	sep := ""
 	if len(lines) > budget {
 		sep = helpStyle.Render(ansi.Truncate(
-			fmt.Sprintf("  lines %d–%d of %d  (⌃u/⌃d to scroll)", scroll+1, end, len(lines)), m.width, "…"))
+			fmt.Sprintf("  lines %d–%d of %d  (⌃u/⌃d to scroll)", scroll+1, end, len(lines)), m.width, "…",
+		))
 	}
 
 	// The "enter" action depends on what's selected: open an attachment, else
@@ -439,10 +440,7 @@ func (m detailModel) previewWidth() int {
 	if m.width < 100 {
 		return 0 // too narrow to split
 	}
-	w := m.width / 3
-	if w > 90 {
-		w = 90
-	}
+	w := min(m.width/3, 90)
 	if w < 28 {
 		return 0
 	}
@@ -454,26 +452,26 @@ func (m detailModel) previewWidth() int {
 // between the header and the help line, so it reads as a panel (and gives text
 // previews room) rather than a box that shrinks to the image.
 func (m detailModel) previewPane(att attachment.Attachment, paneW int) string {
-	isImage := preview.DetectKind(att.StoredPath) == preview.KindImage
+	media := preview.IsMedia(att.StoredPath) // image, or a frame from a video
 	cols, rows := m.previewImageDims()
 
 	// Native graphics (Kitty placeholders): compose directly, no border box —
 	// lipgloss's border/padding could corrupt the one-shot image transmission, and
 	// the placeholder cells already form a clean grid the layout can align.
-	if preview.GraphicsImages() && isImage {
+	if preview.GraphicsImages() && media {
 		header := columnTitleStyle.Render("Preview") + "\n" +
 			helpStyle.Render(ansi.Truncate(att.FileName, paneW, "…")) + "\n\n"
 		// TrimRight the trailing newline so the pane is exactly budget lines and
 		// can't push the view one row past the screen.
-		return header + strings.TrimRight(m.previewContent(att.StoredPath, cols, rows, isImage), "\n")
+		return header + strings.TrimRight(m.previewContent(att.StoredPath, cols, rows, media), "\n")
 	}
 
-	// Text / markdown / half-block image: bordered box, total height = budget.
+	// Text / markdown / half-block media: bordered box, total height = budget.
 	boxH := max(m.bodyBudget()-2, 4) // border adds 2 => total = budget
 	boxW := paneW - 2                // columnStyle adds a 1-cell border on each side
 	header := columnTitleStyle.Render("Preview") + "\n" +
 		helpStyle.Render(ansi.Truncate(att.FileName, max(boxW-2, 8), "…")) + "\n\n"
-	content := m.previewContent(att.StoredPath, cols, rows, isImage)
+	content := m.previewContent(att.StoredPath, cols, rows, media)
 
 	return columnStyle.Width(boxW).Height(boxH).Render(header + content)
 }
@@ -490,12 +488,12 @@ func (m detailModel) previewImageDims() (int, int) {
 	return max(paneW-4, 8), max(boxH-3, 2) // -2 border, -2 padding; -3 header
 }
 
-// previewContent returns the preview body. Images are looked up from the cache
-// (never rendered inline — that would block the event loop on a large decode);
-// on a miss it shows a placeholder and relies on withPreview to render off-loop.
-// Text and markdown are cheap, so they render synchronously.
-func (m detailModel) previewContent(path string, cols, rows int, isImage bool) string {
-	if !isImage {
+// previewContent returns the preview body. Media (images, video frames) is looked
+// up from the cache (never rendered inline — decode/ffmpeg would block the event
+// loop); on a miss it shows a placeholder and relies on withPreview to render
+// off-loop. Text and markdown are cheap, so they render synchronously.
+func (m detailModel) previewContent(path string, cols, rows int, media bool) string {
+	if !media {
 		return preview.Render(path, cols, rows)
 	}
 	if s, ok := preview.Cached(path, cols, rows); ok {
@@ -504,12 +502,12 @@ func (m detailModel) previewContent(path string, cols, rows int, isImage bool) s
 	return helpStyle.Render("  rendering preview…")
 }
 
-// withPreview dispatches an off-loop render for the selected image when it is not
-// yet cached, so navigating onto a large attachment never blocks the UI. It marks
-// the render pending to avoid dispatching it twice.
+// withPreview dispatches an off-loop render for the selected media (image or video
+// frame) when it is not yet cached, so navigating onto a large attachment never
+// blocks the UI. It marks the render pending to avoid dispatching it twice.
 func (m detailModel) withPreview() (detailModel, tea.Cmd) {
 	att, ok := m.selAtt()
-	if !ok || m.previewWidth() == 0 || preview.DetectKind(att.StoredPath) != preview.KindImage {
+	if !ok || m.previewWidth() == 0 || !preview.IsMedia(att.StoredPath) {
 		return m, nil
 	}
 	cols, rows := m.previewImageDims()

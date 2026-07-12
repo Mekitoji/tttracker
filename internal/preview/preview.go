@@ -1,18 +1,25 @@
-// Package preview renders a textual preview of an attachment for display in the
-// TUI: images become half-block thumbnails, Markdown is rendered with glamour,
-// and other UTF-8 text is shown as-is. Binary files get a short placeholder.
+// Package preview renders a preview of an attachment for display in the TUI:
+// images (png/jpeg/gif/webp/bmp/tiff) become half-block thumbnails or native
+// Kitty graphics, videos are previewed by extracting a frame with ffmpeg, Markdown
+// is rendered with glamour, and other UTF-8 text is shown as-is. Binary files (and
+// media that cannot be rendered) get a short placeholder.
 package preview
 
 import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	_ "image/gif"  // register GIF decoder for image.Decode
 	_ "image/jpeg" // register JPEG decoder
 	_ "image/png"  // register PNG decoder
+
+	_ "golang.org/x/image/bmp"  // register BMP decoder
+	_ "golang.org/x/image/tiff" // register TIFF decoder
+	_ "golang.org/x/image/webp" // register WebP decoder
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/x/ansi"
@@ -26,6 +33,8 @@ const (
 	KindImage
 	KindMarkdown
 	KindText
+	KindVideo
+	KindPDF
 )
 
 // maxReadBytes caps how much of a text/markdown file is read for preview.
@@ -35,8 +44,12 @@ const maxReadBytes = 256 * 1024
 // (NUL byte / invalid UTF-8 => binary) for unknown extensions.
 func DetectKind(path string) Kind {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png", ".jpg", ".jpeg", ".gif":
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif":
 		return KindImage
+	case ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".flv", ".wmv":
+		return KindVideo
+	case ".pdf":
+		return KindPDF
 	case ".md", ".markdown":
 		return KindMarkdown
 	}
@@ -51,10 +64,8 @@ func DetectKind(path string) Kind {
 }
 
 func isTextual(data []byte) bool {
-	for _, b := range data {
-		if b == 0 {
-			return false
-		}
+	if slices.Contains(data, 0) {
+		return false
 	}
 	return utf8.Valid(data)
 }
@@ -68,12 +79,29 @@ func Render(path string, width, height int) string {
 	switch DetectKind(path) {
 	case KindImage:
 		return renderImage(path, width, height)
+	case KindVideo:
+		return renderVideo(path, width, height)
+	case KindPDF:
+		return renderPDF(path, width, height)
 	case KindMarkdown:
 		return renderMarkdown(path, width, height)
 	case KindText:
 		return renderText(path, width, height)
 	default:
 		return placeholder("binary file — no preview")
+	}
+}
+
+// IsMedia reports whether the file previews as an image — directly, or a frame
+// extracted from a video, or the first page of a PDF. Such previews are
+// (relatively) slow and cached, so the TUI renders them off the event loop rather
+// than inline in a frame.
+func IsMedia(path string) bool {
+	switch DetectKind(path) {
+	case KindImage, KindVideo, KindPDF:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -92,10 +120,7 @@ func renderMarkdown(path string, width, height int) string {
 	if err != nil {
 		return placeholder("cannot read file")
 	}
-	w := width
-	if w < 20 {
-		w = 20
-	}
+	w := max(width, 20)
 	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(w))
 	if err != nil {
 		return clip(string(data), width, height)

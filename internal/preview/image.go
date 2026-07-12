@@ -27,7 +27,9 @@ var imagePreviewer ImagePreviewer = halfBlockPreviewer{}
 // renderImage produces the preview for an image, cached by path+modtime+size so
 // the (relatively expensive) decode/resample runs once rather than every frame.
 func renderImage(path string, cols, rows int) string {
-	out, err := cachedImage(path, cols, rows)
+	out, err := cachedRender(path, cols, rows, func() (string, error) {
+		return imagePreviewer.Preview(path, cols, rows)
+	})
 	if err != nil {
 		return placeholder("cannot render image")
 	}
@@ -39,7 +41,11 @@ var (
 	imgCache = map[string]string{}
 )
 
-func cachedImage(path string, w, h int) (string, error) {
+// cachedRender memoises a rendered preview string by path+modtime+size, so a slow
+// producer (image decode/resample, or a video frame extraction) runs once. The
+// cache is keyed by the attachment path, so Cached() finds it for images and
+// videos alike. Only successful renders are cached.
+func cachedRender(path string, w, h int, produce func() (string, error)) (string, error) {
 	key := imageCacheKey(path, w, h)
 
 	cacheMu.Lock()
@@ -49,7 +55,7 @@ func cachedImage(path string, w, h int) (string, error) {
 	}
 	cacheMu.Unlock()
 
-	s, err := imagePreviewer.Preview(path, w, h)
+	s, err := produce()
 	if err != nil {
 		return "", err
 	}
