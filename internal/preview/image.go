@@ -63,6 +63,16 @@ func cachedImage(path string, w, h int) (string, error) {
 	return s, nil
 }
 
+// Cached returns a rendered image preview if it is already in the cache, without
+// rendering (which can be slow for large images). Callers can show a placeholder
+// and render off the UI thread on a miss.
+func Cached(path string, w, h int) (string, bool) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	s, ok := imgCache[imageCacheKey(path, w, h)]
+	return s, ok
+}
+
 func imageCacheKey(path string, w, h int) string {
 	var mod int64
 	if fi, err := os.Stat(path); err == nil {
@@ -113,7 +123,7 @@ func halfBlocks(img image.Image, cols, rows int) string {
 
 	var sb strings.Builder
 	for y := 0; y < outH; y += 2 {
-		for x := 0; x < outW; x++ {
+		for x := range outW {
 			tr, tg, tb := avgRGB(img, b, srcW, srcH, outW, outH, x, y)
 			br, bg, bb := avgRGB(img, b, srcW, srcH, outW, outH, x, y+1)
 			fmt.Fprintf(&sb, "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm▀", tr, tg, tb, br, bg, bb)

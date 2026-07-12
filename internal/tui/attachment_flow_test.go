@@ -122,12 +122,23 @@ func TestDetailImagePreviewPane(t *testing.T) {
 		t.Fatal("expected attachment selected")
 	}
 
+	// The image preview renders off the event loop; before that it's a placeholder.
+	if view := m.detail.View(); !strings.Contains(view, "rendering preview") {
+		t.Fatal("expected a rendering placeholder before the async render")
+	}
+	dm, cmd := m.detail.withPreview()
+	m.detail = dm
+	if cmd == nil {
+		t.Fatal("expected a preview render command for the selected image")
+	}
+	cmd() // run the off-loop render, populating the cache
+
 	view := m.detail.View()
 	if !strings.Contains(view, "Preview") {
 		t.Fatal("preview pane title missing")
 	}
 	if !strings.Contains(view, "▀") {
-		t.Fatal("expected half-block thumbnail in preview")
+		t.Fatal("expected half-block thumbnail in preview after render")
 	}
 }
 

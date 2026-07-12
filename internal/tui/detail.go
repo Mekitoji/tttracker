@@ -50,6 +50,9 @@ type detailModel struct {
 	bodyScroll  int // top line of the body viewport (see View)
 	width       int
 	height      int
+	// previewPending is the cache key of the image preview currently being
+	// rendered off the UI thread, so the same render is not dispatched twice.
+	previewPending string
 }
 
 func loadDetail(a *app.App, ctx context.Context, key string, w, h int) (detailModel, error) {
@@ -451,16 +454,78 @@ func (m detailModel) previewWidth() int {
 // between the header and the help line, so it reads as a panel (and gives text
 // previews room) rather than a box that shrinks to the image.
 func (m detailModel) previewPane(att attachment.Attachment, paneW int) string {
-	boxW := paneW - 2          // columnStyle adds a 1-cell border on each side
-	contentW := max(boxW-2, 8) // columnStyle's Padding(0,1) eats one cell per side
-	boxH := max(m.height-8, 4) // fills the vertical slot; border adds 2 to total
-	contentH := max(boxH-3, 2) // "Preview" + filename + blank line
+	isImage := preview.DetectKind(att.StoredPath) == preview.KindImage
+	cols, rows := m.previewImageDims()
 
+	// Native graphics (Kitty placeholders): compose directly, no border box —
+	// lipgloss's border/padding could corrupt the one-shot image transmission, and
+	// the placeholder cells already form a clean grid the layout can align.
+	if preview.GraphicsImages() && isImage {
+		header := columnTitleStyle.Render("Preview") + "\n" +
+			helpStyle.Render(ansi.Truncate(att.FileName, paneW, "…")) + "\n\n"
+		// TrimRight the trailing newline so the pane is exactly budget lines and
+		// can't push the view one row past the screen.
+		return header + strings.TrimRight(m.previewContent(att.StoredPath, cols, rows, isImage), "\n")
+	}
+
+	// Text / markdown / half-block image: bordered box, total height = budget.
+	boxH := max(m.bodyBudget()-2, 4) // border adds 2 => total = budget
+	boxW := paneW - 2                // columnStyle adds a 1-cell border on each side
 	header := columnTitleStyle.Render("Preview") + "\n" +
-		helpStyle.Render(ansi.Truncate(att.FileName, contentW, "…")) + "\n\n"
-	content := preview.Render(att.StoredPath, contentW, contentH)
+		helpStyle.Render(ansi.Truncate(att.FileName, max(boxW-2, 8), "…")) + "\n\n"
+	content := m.previewContent(att.StoredPath, cols, rows, isImage)
 
 	return columnStyle.Width(boxW).Height(boxH).Render(header + content)
+}
+
+// previewImageDims is the (cols, rows) the preview content is rendered at — the
+// single source of truth so the async render and the View lookup use the same
+// cache key.
+func (m detailModel) previewImageDims() (int, int) {
+	paneW := m.previewWidth()
+	if preview.GraphicsImages() {
+		return paneW, max(m.bodyBudget()-3, 1) // header is 3 lines
+	}
+	boxH := max(m.bodyBudget()-2, 4)
+	return max(paneW-4, 8), max(boxH-3, 2) // -2 border, -2 padding; -3 header
+}
+
+// previewContent returns the preview body. Images are looked up from the cache
+// (never rendered inline — that would block the event loop on a large decode);
+// on a miss it shows a placeholder and relies on withPreview to render off-loop.
+// Text and markdown are cheap, so they render synchronously.
+func (m detailModel) previewContent(path string, cols, rows int, isImage bool) string {
+	if !isImage {
+		return preview.Render(path, cols, rows)
+	}
+	if s, ok := preview.Cached(path, cols, rows); ok {
+		return s
+	}
+	return helpStyle.Render("  rendering preview…")
+}
+
+// withPreview dispatches an off-loop render for the selected image when it is not
+// yet cached, so navigating onto a large attachment never blocks the UI. It marks
+// the render pending to avoid dispatching it twice.
+func (m detailModel) withPreview() (detailModel, tea.Cmd) {
+	att, ok := m.selAtt()
+	if !ok || m.previewWidth() == 0 || preview.DetectKind(att.StoredPath) != preview.KindImage {
+		return m, nil
+	}
+	cols, rows := m.previewImageDims()
+	key := fmt.Sprintf("%s|%dx%d", att.StoredPath, cols, rows)
+	if key == m.previewPending {
+		return m, nil // already rendering this one
+	}
+	if _, cached := preview.Cached(att.StoredPath, cols, rows); cached {
+		return m, nil // already ready
+	}
+	m.previewPending = key
+	path := att.StoredPath
+	return m, func() tea.Msg {
+		preview.Render(path, cols, rows) // slow decode/encode, off the event loop
+		return previewReadyMsg{key: key}
+	}
 }
 
 // row renders one selectable line, highlighted when selected, truncated to width.

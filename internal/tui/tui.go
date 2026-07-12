@@ -13,6 +13,7 @@ import (
 
 	"tttracker/internal/app"
 	"tttracker/internal/editor"
+	"tttracker/internal/preview"
 	"tttracker/internal/ticket"
 )
 
@@ -61,6 +62,7 @@ type (
 	openProjectEditMsg  struct{ key string }
 	createProjectMsg    struct{ key, name string }
 	reposLoadedMsg      struct{ repos []string }
+	previewReadyMsg     struct{ key string } // an off-loop image preview finished rendering
 	askDeleteProjectMsg struct{ key string }
 	deleteProjectMsg    struct{ key string }
 	askDeleteTicketMsg  struct{ key string }
@@ -112,6 +114,11 @@ type model struct {
 // Run launches the terminal UI over the given application facade.
 func Run(application *app.App, keysPath string) error {
 	keys = LoadKeyMap(keysPath)
+	// Detect the terminal cell size (in pixels) and the image protocol up front:
+	// on Kitty this swaps the side-pane previewer to crisp native graphics, else it
+	// stays on the half-block fallback.
+	preview.InitCellSize()
+	preview.InitGraphics()
 	ctx := context.Background()
 	pm, err := newProjectsModel(application, ctx)
 	if err != nil {
@@ -143,7 +150,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search = m.search.setSize(m.width, m.height)
 		m.projectEdit = m.projectEdit.setSize(m.width, m.height)
 		m.attachPicker = m.attachPicker.setSize(m.width, m.height)
-		return m, nil
+		var pc tea.Cmd
+		m.detail, pc = m.detail.withPreview() // new size => re-render preview off-loop
+		return m, pc
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -156,6 +165,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.board, m.status, m.screen = bm, "", screenBoard
 		return m, nil
+	case previewReadyMsg:
+		// The off-loop render populated the cache; clearing pending lets a later
+		// resize re-dispatch. Returning re-renders, so the image now shows.
+		if m.detail.previewPending == msg.key {
+			m.detail.previewPending = ""
+		}
+		return m, nil
 	case openTicketMsg:
 		dm, err := loadDetail(m.app, m.ctx, msg.key, m.width, m.height)
 		if err != nil {
@@ -163,7 +179,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.detail, m.status, m.screen = dm, "", screenDetail
-		return m, nil
+		var pc tea.Cmd
+		m.detail, pc = m.detail.withPreview() // preselected image renders off-loop
+		return m, pc
 	case backMsg:
 		switch m.screen {
 		case screenDetail:
@@ -299,6 +317,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.board, cmd = m.board.Update(msg)
 	case screenDetail:
 		m.detail, cmd = m.detail.Update(msg)
+		var pc tea.Cmd
+		m.detail, pc = m.detail.withPreview() // render newly-selected image off-loop
+		cmd = tea.Batch(cmd, pc)
 	case screenPicker:
 		m.picker, cmd = m.picker.Update(msg)
 	case screenSearch:
