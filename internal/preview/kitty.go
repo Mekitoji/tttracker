@@ -19,6 +19,11 @@ func InitGraphics() {
 	}
 }
 
+// SetGraphicsImages overrides the detected graphics mode. Normally InitGraphics
+// decides; this exists to force a mode (and for tests, which cannot rely on a
+// Kitty terminal being present).
+func SetGraphicsImages(v bool) { graphicsImages = v }
+
 // GraphicsImages reports whether image previews are terminal graphics (Kitty
 // placeholders) rather than half-block text. Such output — a grid of placeholder
 // cells plus a one-shot image transmission — must be composed directly, without a

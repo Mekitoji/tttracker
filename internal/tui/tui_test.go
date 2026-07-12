@@ -17,6 +17,7 @@ import (
 	"tttracker/internal/clock"
 	"tttracker/internal/db"
 	"tttracker/internal/editor"
+	"tttracker/internal/preview"
 	"tttracker/internal/subtask"
 	"tttracker/internal/ticket"
 )
@@ -821,5 +822,36 @@ func TestDetailBodyScrollFollowsCursor(t *testing.T) {
 	body, _ := m.bodyView(m.contentWidth())
 	if maxScroll := lineCount(body) - m.bodyBudget(); m.bodyScroll != maxScroll {
 		t.Fatalf("scroll should clamp at %d, got %d", maxScroll, m.bodyScroll)
+	}
+}
+
+// In graphics (Kitty) mode a non-image attachment still uses the bordered box.
+// Its dimensions must match the box so a long text preview can't expand it past
+// the screen (regression: the whole view shifted down).
+func TestDetailTextPreviewFitsInGraphicsMode(t *testing.T) {
+	preview.SetGraphicsImages(true)
+	t.Cleanup(func() { preview.SetGraphicsImages(false) })
+
+	txt := filepath.Join(t.TempDir(), "code.ts")
+	body := strings.Repeat("import { Something } from './somewhere';\n", 300)
+	if err := os.WriteFile(txt, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	m := detailModel{
+		key:         "PET-1",
+		ticket:      ticket.Ticket{Title: "t"},
+		attachments: []attachment.Attachment{{FileName: "code.ts", StoredPath: txt}},
+		width:       120,
+		height:      30,
+	}
+	m = m.clampScroll()
+	if _, ok := m.selAtt(); !ok {
+		t.Fatal("text attachment should be selected")
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	if len(lines) > m.height {
+		t.Fatalf("text preview overflowed: %d lines > height %d", len(lines), m.height)
 	}
 }

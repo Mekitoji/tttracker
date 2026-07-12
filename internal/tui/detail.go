@@ -452,13 +452,14 @@ func (m detailModel) previewWidth() int {
 // between the header and the help line, so it reads as a panel (and gives text
 // previews room) rather than a box that shrinks to the image.
 func (m detailModel) previewPane(att attachment.Attachment, paneW int) string {
-	media := preview.IsMedia(att.StoredPath) // image, or a frame from a video
-	cols, rows := m.previewImageDims()
+	media := preview.IsMedia(att.StoredPath) // image, or a frame from a video/PDF
+	graphics := preview.GraphicsImages() && media
+	cols, rows := m.previewImageDims(graphics)
 
 	// Native graphics (Kitty placeholders): compose directly, no border box —
 	// lipgloss's border/padding could corrupt the one-shot image transmission, and
 	// the placeholder cells already form a clean grid the layout can align.
-	if preview.GraphicsImages() && media {
+	if graphics {
 		header := columnTitleStyle.Render("Preview") + "\n" +
 			helpStyle.Render(ansi.Truncate(att.FileName, paneW, "…")) + "\n\n"
 		// TrimRight the trailing newline so the pane is exactly budget lines and
@@ -473,15 +474,21 @@ func (m detailModel) previewPane(att attachment.Attachment, paneW int) string {
 		helpStyle.Render(ansi.Truncate(att.FileName, max(boxW-2, 8), "…")) + "\n\n"
 	content := m.previewContent(att.StoredPath, cols, rows, media)
 
-	return columnStyle.Width(boxW).Height(boxH).Render(header + content)
+	// MaxHeight is a safety net: Height only pads (never truncates), so a content
+	// sizing mistake would otherwise expand the box past the screen.
+	return columnStyle.Width(boxW).Height(boxH).MaxHeight(m.bodyBudget()).Render(header + content)
 }
 
 // previewImageDims is the (cols, rows) the preview content is rendered at — the
 // single source of truth so the async render and the View lookup use the same
 // cache key.
-func (m detailModel) previewImageDims() (int, int) {
+// previewImageDims is the (cols, rows) the preview content is rendered at. It
+// depends on whether this attachment uses the borderless graphics pane or the
+// bordered box — passing GraphicsImages() alone would size text (which always
+// uses the box) as if it were graphics and overflow the box.
+func (m detailModel) previewImageDims(graphics bool) (int, int) {
 	paneW := m.previewWidth()
-	if preview.GraphicsImages() {
+	if graphics {
 		return paneW, max(m.bodyBudget()-3, 1) // header is 3 lines
 	}
 	boxH := max(m.bodyBudget()-2, 4)
@@ -510,7 +517,7 @@ func (m detailModel) withPreview() (detailModel, tea.Cmd) {
 	if !ok || m.previewWidth() == 0 || !preview.IsMedia(att.StoredPath) {
 		return m, nil
 	}
-	cols, rows := m.previewImageDims()
+	cols, rows := m.previewImageDims(preview.GraphicsImages()) // media => graphics iff Kitty
 	key := fmt.Sprintf("%s|%dx%d", att.StoredPath, cols, rows)
 	if key == m.previewPending {
 		return m, nil // already rendering this one
