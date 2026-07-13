@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/tiff"
 )
@@ -51,7 +52,8 @@ func TestDetectKind(t *testing.T) {
 	}{
 		{"png", writePNG(t, "a.png", 4, 4), KindImage},
 		{"markdown", writeTemp(t, "a.md", []byte("# hi")), KindMarkdown},
-		{"text", writeTemp(t, "a.go", []byte("package main\n")), KindText},
+		{"code", writeTemp(t, "a.go", []byte("package main\n")), KindCode},
+		{"text", writeTemp(t, "a.txt", []byte("plain notes\n")), KindText},
 		{"binary", writeTemp(t, "a.bin", []byte{0x00, 0x01, 0x02, 0x00}), KindBinary},
 	}
 	for _, c := range cases {
@@ -73,6 +75,25 @@ func TestRenderTextClips(t *testing.T) {
 	for _, ln := range lines {
 		if len([]rune(ln)) > 10 {
 			t.Fatalf("line exceeds width 10: %q", ln)
+		}
+	}
+}
+
+func TestRenderCodeHighlightsAndClips(t *testing.T) {
+	body := "package main\n\nfunc main() {\n\tprintln(\"hello\")\n}\n"
+	p := writeTemp(t, "main.go", []byte(body))
+
+	out := Render(p, 14, 3)
+	if !strings.Contains(out, "\x1b[") {
+		t.Fatalf("expected ANSI highlighting in code preview: %q", out)
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want 3 lines, got %d: %q", len(lines), out)
+	}
+	for _, ln := range lines {
+		if ansi.StringWidth(ln) > 14 {
+			t.Fatalf("line exceeds width 14: %q", ln)
 		}
 	}
 }

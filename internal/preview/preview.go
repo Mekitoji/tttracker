@@ -1,11 +1,13 @@
 // Package preview renders a preview of an attachment for display in the TUI:
 // images (png/jpeg/gif/webp/bmp/tiff) become half-block thumbnails or native
 // Kitty graphics, videos are previewed by extracting a frame with ffmpeg, Markdown
-// is rendered with glamour, and other UTF-8 text is shown as-is. Binary files (and
-// media that cannot be rendered) get a short placeholder.
+// is rendered with glamour, source code is highlighted with Chroma, and other
+// UTF-8 text is shown as-is. Binary files (and media that cannot be rendered) get
+// a short placeholder.
 package preview
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +23,10 @@ import (
 	_ "golang.org/x/image/tiff" // register TIFF decoder
 	_ "golang.org/x/image/webp" // register WebP decoder
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -32,6 +38,7 @@ const (
 	KindBinary Kind = iota
 	KindImage
 	KindMarkdown
+	KindCode
 	KindText
 	KindVideo
 	KindPDF
@@ -60,6 +67,9 @@ func DetectKind(path string) Kind {
 	if !isTextual(data) {
 		return KindBinary
 	}
+	if codeLexer(path, string(data)) != nil {
+		return KindCode
+	}
 	return KindText
 }
 
@@ -85,6 +95,8 @@ func Render(path string, width, height int) string {
 		return renderPDF(path, width, height)
 	case KindMarkdown:
 		return renderMarkdown(path, width, height)
+	case KindCode:
+		return renderCode(path, width, height)
 	case KindText:
 		return renderText(path, width, height)
 	default:
@@ -115,6 +127,19 @@ func renderText(path string, width, height int) string {
 	return clip(string(data), width, height)
 }
 
+func renderCode(path string, width, height int) string {
+	data, err := readCapped(path, maxReadBytes)
+	if err != nil {
+		return placeholder("cannot read file")
+	}
+	source := string(data)
+	out, ok := highlightCode(path, source)
+	if !ok {
+		out = source
+	}
+	return clip(out, width, height)
+}
+
 func renderMarkdown(path string, width, height int) string {
 	data, err := readCapped(path, maxReadBytes)
 	if err != nil {
@@ -130,6 +155,46 @@ func renderMarkdown(path string, width, height int) string {
 		return clip(string(data), width, height)
 	}
 	return clip(out, width, height)
+}
+
+func highlightCode(path, source string) (string, bool) {
+	lexer := codeLexer(path, source)
+	if lexer == nil {
+		return "", false
+	}
+	iterator, err := chroma.Coalesce(lexer).Tokenise(nil, source)
+	if err != nil {
+		return "", false
+	}
+	var b bytes.Buffer
+	if err := formatters.Get("terminal256").Format(&b, styles.Get("github-dark"), iterator); err != nil {
+		return "", false
+	}
+	return b.String(), true
+}
+
+func codeLexer(path, source string) chroma.Lexer {
+	if lexer := lexers.Match(path); isCodeLexer(lexer) {
+		return lexer
+	}
+	if filepath.Ext(path) == "" {
+		if lexer := lexers.Analyse(source); isCodeLexer(lexer) {
+			return lexer
+		}
+	}
+	return nil
+}
+
+func isCodeLexer(lexer chroma.Lexer) bool {
+	if lexer == nil {
+		return false
+	}
+	switch strings.ToLower(lexer.Config().Name) {
+	case "fallback", "plaintext":
+		return false
+	default:
+		return true
+	}
 }
 
 // clip trims content to at most height lines, each truncated to width columns
