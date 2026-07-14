@@ -311,11 +311,12 @@ func (m detailModel) View() string {
 	// can never wrap and push the layout past the screen.
 	titleText := fmt.Sprintf("%s  %s", m.key, t.Title)
 	metaText := fmt.Sprintf("status:%s  priority:%s  type:%s", t.Status, t.Priority, t.Type)
+	meta := fieldStyle.Render(metaText)
 	if len(t.Labels) > 0 {
-		metaText += "  labels:" + strings.Join(t.Labels, ",")
+		meta += fieldStyle.Render("  labels:") + renderLabels(t.Labels)
 	}
 	head := titleStyle.Render(ansi.Truncate(titleText, m.width, "…")) + "\n" +
-		fieldStyle.Render(ansi.Truncate(metaText, m.width, "…"))
+		ansi.Truncate(meta, m.width, "…")
 
 	// Body: render fully, then show a window of bodyBudget rows at bodyScroll so
 	// nothing ever exceeds the screen; the rest is reachable by scrolling.

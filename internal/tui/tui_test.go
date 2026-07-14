@@ -785,6 +785,25 @@ func TestDetailViewFitsScreen(t *testing.T) {
 	assertFits("preview", mp)
 }
 
+func TestDetailViewRendersColoredLabels(t *testing.T) {
+	m := detailModel{
+		key: "PET-1",
+		ticket: ticket.Ticket{
+			Title:  "colored labels",
+			Labels: []string{"backend", "urgent"},
+		},
+		width:  120,
+		height: 24,
+	}
+
+	meta := strings.Split(m.View(), "\n")[1]
+	for _, label := range m.ticket.Labels {
+		if !strings.Contains(meta, labelChip(label)) {
+			t.Fatalf("detail metadata does not contain colored label %q: %q", label, meta)
+		}
+	}
+}
+
 // Moving the cursor keeps the selected row inside the viewport; manual scroll
 // moves the window freely and clamps at the ends.
 func TestDetailBodyScrollFollowsCursor(t *testing.T) {
