@@ -73,3 +73,19 @@ func TestBoardColumnViewportFollowsCursor(t *testing.T) {
 		t.Fatalf("viewport should follow upward to 15, got %d", start)
 	}
 }
+
+func TestBoardFilterModelBuildsOptions(t *testing.T) {
+	b := boardModel{filters: ticket.ListOptions{Sort: ticket.SortUpdated}, allLabels: []string{"backend"}}
+	m := newBoardFilterModel(b)
+	for i, item := range m.items {
+		if item.group == "label" || (item.group == "special" && item.value == "current") {
+			m.cursor = i
+			m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+		}
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd().(applyBoardFiltersMsg)
+	if msg.options.Sort != ticket.SortUpdated || len(msg.options.Labels) != 1 || msg.options.Labels[0] != "backend" || !msg.options.OnlyCurrent {
+		t.Fatalf("unexpected options: %+v", msg.options)
+	}
+}

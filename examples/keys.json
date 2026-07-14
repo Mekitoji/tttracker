@@ -53,6 +53,18 @@
     "board_toggle_inactive": [
       "@"
     ],
+    "board_filters": [
+      "f"
+    ],
+    "board_sort": [
+      "o"
+    ],
+    "board_move_up": [
+      "ctrl+up"
+    ],
+    "board_move_down": [
+      "ctrl+down"
+    ],
     "detail_set_priority": [
       "p"
     ],

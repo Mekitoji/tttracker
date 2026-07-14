@@ -31,6 +31,7 @@ const (
 	screenProjectEdit
 	screenConfirm
 	screenAttachPicker
+	screenBoardFilters
 )
 
 type actionKind int
@@ -68,6 +69,12 @@ type (
 	askDeleteTicketMsg  struct{ key string }
 	deleteTicketMsg     struct{ key string }
 	moveTicketMsg       struct{ key, newStatus string }
+	moveManualMsg       struct {
+		key   string
+		delta int
+	}
+	reloadBoardMsg      struct{}
+	openBoardFiltersMsg struct{}
 	submitFormMsg       struct{ value string }
 	startActionMsg      struct {
 		kind      actionKind
@@ -101,6 +108,7 @@ type model struct {
 	projectCreate projectCreateModel
 	confirm       confirmModel
 	attachPicker  attachPickerModel
+	boardFilters  boardFilterModel
 	confirmReturn screen
 	finder        repoFinder
 
@@ -150,6 +158,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search = m.search.setSize(m.width, m.height)
 		m.projectEdit = m.projectEdit.setSize(m.width, m.height)
 		m.attachPicker = m.attachPicker.setSize(m.width, m.height)
+		m.boardFilters.height = m.height
 		var pc tea.Cmd
 		m.detail, pc = m.detail.withPreview() // new size => re-render preview off-loop
 		return m, pc
@@ -209,6 +218,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending = pendingState{}
 		case screenAttachPicker:
 			m.screen = screenDetail
+		case screenBoardFilters:
+			m.screen = screenBoard
 		}
 		return m, nil
 	case newProjectFormMsg:
@@ -225,6 +236,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search = newSearchModel(m.app, m.ctx, m.width, m.height)
 		m.screen = screenSearch
 		return m, textinput.Blink
+	case openBoardFiltersMsg:
+		m.boardFilters = newBoardFilterModel(m.board)
+		m.screen = screenBoardFilters
+		return m, nil
+	case applyBoardFiltersMsg:
+		m.board.filters = msg.options
+		if bm, err := m.board.reload(m.app, m.ctx); err != nil {
+			m.status = err.Error()
+		} else {
+			m.board = bm
+			m.status = ""
+		}
+		m.screen = screenBoard
+		return m, nil
+	case reloadBoardMsg:
+		if bm, err := m.board.reload(m.app, m.ctx); err != nil {
+			m.status = err.Error()
+		} else {
+			m.board = bm
+			m.status = ""
+		}
+		return m, nil
+	case moveManualMsg:
+		if err := m.app.Tickets.MoveManual(m.ctx, msg.key, msg.delta); err != nil {
+			m.status = err.Error()
+			return m, nil
+		}
+		if bm, err := m.board.reload(m.app, m.ctx); err == nil {
+			_, num, _ := ticket.ParseKey(msg.key)
+			bm.focusTicketVisible(num)
+			m.board = bm
+		}
+		return m, nil
 	case openProjectEditMsg:
 		pe, err := newProjectEditModel(m.app, m.ctx, msg.key, m.width, m.height, m.finder)
 		if err != nil {
@@ -332,6 +376,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm, cmd = m.confirm.Update(msg)
 	case screenAttachPicker:
 		m.attachPicker, cmd = m.attachPicker.Update(msg)
+	case screenBoardFilters:
+		m.boardFilters, cmd = m.boardFilters.Update(msg)
 	case screenTicketForm, screenActionForm:
 		m.form, cmd = m.form.Update(msg)
 	}
@@ -555,6 +601,8 @@ func (m model) View() string {
 		body = m.confirm.View()
 	case screenAttachPicker:
 		body = m.attachPicker.View()
+	case screenBoardFilters:
+		body = m.boardFilters.View()
 	}
 	if m.status != "" {
 		body += "\n" + errorStyle.Render(m.status)

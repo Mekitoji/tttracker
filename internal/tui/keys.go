@@ -31,6 +31,10 @@ type KeyMap struct {
 	BoardProjects        key.Binding
 	BoardToggleBlocked   key.Binding
 	BoardToggleInactive  key.Binding
+	BoardFilters         key.Binding
+	BoardSort            key.Binding
+	BoardMoveUp          key.Binding
+	BoardMoveDown        key.Binding
 
 	// detail
 	DetailSetPriority     key.Binding
@@ -95,6 +99,10 @@ func DefaultKeyMap() KeyMap {
 		BoardProjects:        bind([]string{"p"}, "p", "projects"),
 		BoardToggleBlocked:   bind([]string{"!"}, "!", "blocked"),
 		BoardToggleInactive:  bind([]string{"@"}, "@", "inactive"),
+		BoardFilters:         bind([]string{"f"}, "f", "filter"),
+		BoardSort:            bind([]string{"o"}, "o", "sort"),
+		BoardMoveUp:          bind([]string{"ctrl+up"}, "⌃↑/⌃↓", "order"),
+		BoardMoveDown:        bind([]string{"ctrl+down"}, "", ""),
 
 		DetailSetPriority:     bind([]string{"p"}, "p", "priority"),
 		DetailSetType:         bind([]string{"t"}, "t", "type"),
@@ -153,6 +161,10 @@ func (k *KeyMap) refs() []bindingRef {
 		{"board_projects", &k.BoardProjects},
 		{"board_toggle_blocked", &k.BoardToggleBlocked},
 		{"board_toggle_inactive", &k.BoardToggleInactive},
+		{"board_filters", &k.BoardFilters},
+		{"board_sort", &k.BoardSort},
+		{"board_move_up", &k.BoardMoveUp},
+		{"board_move_down", &k.BoardMoveDown},
 		{"detail_set_priority", &k.DetailSetPriority},
 		{"detail_set_type", &k.DetailSetType},
 		{"detail_edit_title", &k.DetailEditTitle},

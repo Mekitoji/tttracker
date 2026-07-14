@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -43,6 +45,8 @@ type boardModel struct {
 	showBlocked  bool  // toggle visibility of blocked column
 	showInactive bool  // toggle visibility of backlog/archived columns
 	visibleCols  []int // indices of visible columns in boardStatuses
+	filters      ticket.ListOptions
+	allLabels    []string
 }
 
 func loadBoard(a *app.App, ctx context.Context, projectKey string, w, h int) (boardModel, error) {
@@ -55,6 +59,8 @@ func loadBoard(a *app.App, ctx context.Context, projectKey string, w, h int) (bo
 		return boardModel{}, err
 	}
 	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: groupTickets(tickets), width: w, height: h}
+	bm.filters.Sort = ticket.SortManual
+	bm.allLabels = collectLabels(tickets)
 	bm.colScroll = make([]int, len(boardStatuses))
 	bm.updateVisibleCols()
 	// Start at first primary column (todo, index 1 in boardStatuses)
@@ -83,17 +89,37 @@ func groupTickets(tickets []ticket.Ticket) [][]ticket.Ticket {
 // first visible column only if its column became hidden. Use this after any
 // mutation instead of rebuilding the model, so view state never gets dropped.
 func (m boardModel) reload(a *app.App, ctx context.Context) (boardModel, error) {
-	tickets, err := a.Tickets.List(ctx, m.projectKey)
+	tickets, err := a.Tickets.ListWithOptions(ctx, m.projectKey, m.filters)
 	if err != nil {
 		return m, err
 	}
 	m.columns = groupTickets(tickets)
+	all, err := a.Tickets.List(ctx, m.projectKey)
+	if err != nil {
+		return m, err
+	}
+	m.allLabels = collectLabels(all)
 	if m.visibleColIndex(m.col) < 0 {
 		m.col = m.visibleCols[0]
 	}
 	m.clampRow()
 	m.followCursor()
 	return m, nil
+}
+
+func collectLabels(tickets []ticket.Ticket) []string {
+	set := make(map[string]bool)
+	for _, t := range tickets {
+		for _, label := range t.Labels {
+			set[label] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for label := range set {
+		out = append(out, label)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // updateVisibleCols builds the list of visible column indices based on view mode
@@ -159,6 +185,32 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 		}
 	case key.Matches(km, keys.BoardSearch):
 		return m, func() tea.Msg { return openSearchMsg{} }
+	case key.Matches(km, keys.BoardFilters):
+		return m, func() tea.Msg { return openBoardFiltersMsg{} }
+	case key.Matches(km, keys.BoardSort):
+		switch m.filters.Sort {
+		case ticket.SortManual:
+			m.filters.Sort = ticket.SortPriority
+		case ticket.SortPriority:
+			m.filters.Sort = ticket.SortUpdated
+		default:
+			m.filters.Sort = ticket.SortManual
+		}
+		return m, func() tea.Msg { return reloadBoardMsg{} }
+	case key.Matches(km, keys.BoardMoveUp):
+		if m.filters.Sort == ticket.SortManual {
+			if t, ok := m.selected(); ok {
+				k := ticket.Key(m.projectKey, t.Number)
+				return m, func() tea.Msg { return moveManualMsg{key: k, delta: -1} }
+			}
+		}
+	case key.Matches(km, keys.BoardMoveDown):
+		if m.filters.Sort == ticket.SortManual {
+			if t, ok := m.selected(); ok {
+				k := ticket.Key(m.projectKey, t.Number)
+				return m, func() tea.Msg { return moveManualMsg{key: k, delta: 1} }
+			}
+		}
 	case key.Matches(km, keys.BoardNewTicket):
 		return m, func() tea.Msg { return newTicketFormMsg{} }
 	case key.Matches(km, keys.BoardMoveStatus):
@@ -306,6 +358,11 @@ func (m *boardModel) focusTicketVisible(number int) bool {
 
 func (m boardModel) View() string {
 	header := titleStyle.Render(fmt.Sprintf("Board — %s", m.projectKey))
+	meta := "sort:" + string(m.filters.Sort)
+	if n := activeFilterCount(m.filters); n > 0 {
+		meta += fmt.Sprintf("  filters:%d", n)
+	}
+	header += "  " + helpStyle.Render(meta)
 
 	// Per-column total width budget; the column renders as innerW (content+padding)
 	// plus 2 border cells, so keep a small margin to avoid horizontal overflow.
@@ -358,9 +415,32 @@ func (m boardModel) View() string {
 	}
 
 	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
-	help := helpLine(keys.Left, keys.Up, keys.Open, keys.BoardMoveTicketLeft, keys.BoardMoveStatus, keys.BoardDeleteTicket,
-		keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.BoardToggleBlocked, keys.BoardToggleInactive, keys.Quit)
+	help := helpLine(keys.Left, keys.Up, keys.Open, keys.BoardMoveTicketLeft, keys.BoardMoveStatus, keys.BoardMoveUp, keys.BoardDeleteTicket,
+		keys.BoardFilters, keys.BoardSort, keys.BoardSearch, keys.BoardNewTicket, keys.BoardProjects, keys.BoardToggleBlocked, keys.BoardToggleInactive, keys.Quit)
+	help = ansi.Truncate(help, m.width, "…")
 	return header + "\n\n" + board + "\n\n" + help
+}
+
+func activeFilterCount(o ticket.ListOptions) int {
+	n := len(o.Priorities) + len(o.Types) + len(o.Labels)
+	if o.OnlyCurrent {
+		n++
+	}
+	if o.WithoutLabels {
+		n++
+	}
+	if o.StaleBefore != nil {
+		n++
+	}
+	return n
+}
+
+func staleBefore(enabled bool) *time.Time {
+	if !enabled {
+		return nil
+	}
+	t := time.Now().AddDate(0, 0, -30)
+	return &t
 }
 
 func (m boardModel) setSize(w, h int) boardModel {

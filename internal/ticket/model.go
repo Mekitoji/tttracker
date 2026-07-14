@@ -79,9 +79,36 @@ type Ticket struct {
 	Status      Status
 	Priority    Priority
 	Labels      []string
+	Position    int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time
+}
+
+// SortMode controls the order of tickets inside each board column.
+type SortMode string
+
+const (
+	SortManual   SortMode = "manual"
+	SortPriority SortMode = "priority"
+	SortUpdated  SortMode = "updated"
+)
+
+func (s SortMode) Valid() bool {
+	return s == SortManual || s == SortPriority || s == SortUpdated
+}
+
+// ListOptions describes board filters. Labels are OR-ed: a ticket matches when
+// it has at least one selected label. WithoutLabels can be combined with other
+// filters, but intentionally yields no rows when Labels is also non-empty.
+type ListOptions struct {
+	Priorities    []Priority
+	Types         []Type
+	Labels        []string
+	OnlyCurrent   bool
+	WithoutLabels bool
+	StaleBefore   *time.Time
+	Sort          SortMode
 }
 
 // Key formats a display key from a project key and ticket number.

@@ -101,7 +101,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Ticket, error) {
 		t := &Ticket{
 			ProjectID: proj.ID, Number: num, Title: title, Description: p.Description,
 			Type: p.Type, Status: p.Status, Priority: p.Priority, Labels: p.Labels,
-			CreatedAt: now, UpdatedAt: now,
+			Position: num, CreatedAt: now, UpdatedAt: now,
 		}
 		if p.Status == StatusDone {
 			t.CompletedAt = &now
@@ -135,13 +135,84 @@ func (s *Service) Get(ctx context.Context, key string) (*Ticket, error) {
 	return s.tickets.GetByProjectNumber(ctx, s.db, proj.ID, num)
 }
 
-// List returns all tickets in a project, ordered by number.
+// List returns all tickets in a project in manual board order.
 func (s *Service) List(ctx context.Context, projectKey string) ([]Ticket, error) {
+	return s.ListWithOptions(ctx, projectKey, ListOptions{Sort: SortManual})
+}
+
+// ListWithOptions returns a validated, filtered board view.
+func (s *Service) ListWithOptions(ctx context.Context, projectKey string, opts ListOptions) ([]Ticket, error) {
+	if opts.Sort == "" {
+		opts.Sort = SortManual
+	}
+	if !opts.Sort.Valid() {
+		return nil, fmt.Errorf("%w: sort %q", apperr.ErrInvalid, opts.Sort)
+	}
+	for _, v := range opts.Priorities {
+		if !v.Valid() {
+			return nil, fmt.Errorf("%w: priority %q", apperr.ErrInvalid, v)
+		}
+	}
+	for _, v := range opts.Types {
+		if !v.Valid() {
+			return nil, fmt.Errorf("%w: type %q", apperr.ErrInvalid, v)
+		}
+	}
 	proj, err := s.projects.GetByKey(ctx, s.db, projectKey)
 	if err != nil {
 		return nil, err
 	}
-	return s.tickets.ListByProject(ctx, s.db, proj.ID)
+	return s.tickets.ListByProject(ctx, s.db, proj.ID, opts)
+}
+
+// MoveManual swaps a ticket with its neighbour in the same status column.
+func (s *Service) MoveManual(ctx context.Context, key string, delta int) error {
+	if delta != -1 && delta != 1 {
+		return fmt.Errorf("%w: move delta %d", apperr.ErrInvalid, delta)
+	}
+	pk, num, err := ParseKey(key)
+	if err != nil {
+		return err
+	}
+	return db.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		proj, err := s.projects.GetByKey(ctx, tx, pk)
+		if err != nil {
+			return err
+		}
+		current, err := s.tickets.GetByProjectNumber(ctx, tx, proj.ID, num)
+		if err != nil {
+			return err
+		}
+		items, err := s.tickets.ListByProject(ctx, tx, proj.ID, ListOptions{Sort: SortManual})
+		if err != nil {
+			return err
+		}
+		var same []*Ticket
+		for i := range items {
+			if items[i].Status == current.Status {
+				same = append(same, &items[i])
+			}
+		}
+		idx := -1
+		for i, item := range same {
+			if item.ID == current.ID {
+				idx = i
+				break
+			}
+		}
+		other := idx + delta
+		if idx < 0 || other < 0 || other >= len(same) {
+			return nil
+		}
+		left, right := same[idx], same[other]
+		if left.Position == right.Position {
+			right.Position = right.Number
+		}
+		if err := s.tickets.SetPosition(ctx, tx, left.ID, right.Position); err != nil {
+			return err
+		}
+		return s.tickets.SetPosition(ctx, tx, right.ID, left.Position)
+	})
 }
 
 // Delete removes the ticket and (via DB cascade) its subtasks, comments,

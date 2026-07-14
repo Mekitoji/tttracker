@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"tttracker/internal/apperr"
@@ -22,7 +23,7 @@ type Repository struct{}
 
 func NewRepository() *Repository { return &Repository{} }
 
-const ticketCols = `id, project_id, number, title, description, type, status, priority, labels, created_at, updated_at, completed_at`
+const ticketCols = `id, project_id, number, title, description, type, status, priority, labels, position, created_at, updated_at, completed_at`
 
 // NextNumber returns the next per-project ticket number. Call it inside the
 // same transaction as the insert so the number cannot be reused.
@@ -36,10 +37,10 @@ func (Repository) NextNumber(ctx context.Context, q db.DBTX, projectID int64) (i
 func (Repository) Insert(ctx context.Context, q db.DBTX, t *Ticket) error {
 	res, err := q.ExecContext(
 		ctx,
-		`INSERT INTO tickets(project_id, number, title, description, type, status, priority, labels, created_at, updated_at, completed_at)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO tickets(project_id, number, title, description, type, status, priority, labels, position, created_at, updated_at, completed_at)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ProjectID, t.Number, t.Title, t.Description, string(t.Type), string(t.Status), string(t.Priority),
-		marshalLabels(t.Labels), clock.Format(t.CreatedAt), clock.Format(t.UpdatedAt), formatNullable(t.CompletedAt),
+		marshalLabels(t.Labels), t.Position, clock.Format(t.CreatedAt), clock.Format(t.UpdatedAt), formatNullable(t.CompletedAt),
 	)
 	if err != nil {
 		return err
@@ -86,9 +87,53 @@ func (Repository) GetByProjectNumber(ctx context.Context, q db.DBTX, projectID i
 	return t, err
 }
 
-func (Repository) ListByProject(ctx context.Context, q db.DBTX, projectID int64) ([]Ticket, error) {
-	rows, err := q.QueryContext(ctx,
-		`SELECT `+ticketCols+` FROM tickets WHERE project_id = ? ORDER BY number`, projectID)
+func (Repository) ListByProject(ctx context.Context, q db.DBTX, projectID int64, opts ListOptions) ([]Ticket, error) {
+	query := `SELECT ` + ticketCols + ` FROM tickets WHERE project_id = ?`
+	args := []any{projectID}
+	addIn := func(column string, values []string) {
+		if len(values) == 0 {
+			return
+		}
+		query += ` AND ` + column + ` IN (` + strings.TrimRight(strings.Repeat("?,", len(values)), ",") + `)`
+		for _, value := range values {
+			args = append(args, value)
+		}
+	}
+	priorities := make([]string, len(opts.Priorities))
+	for i, value := range opts.Priorities {
+		priorities[i] = string(value)
+	}
+	types := make([]string, len(opts.Types))
+	for i, value := range opts.Types {
+		types[i] = string(value)
+	}
+	addIn("priority", priorities)
+	addIn("type", types)
+	if opts.OnlyCurrent {
+		query += ` AND status IN ('todo','in_progress','blocked')`
+	}
+	if opts.WithoutLabels {
+		query += ` AND json_array_length(labels) = 0`
+	}
+	if len(opts.Labels) > 0 {
+		query += ` AND EXISTS (SELECT 1 FROM json_each(tickets.labels) WHERE value IN (` + strings.TrimRight(strings.Repeat("?,", len(opts.Labels)), ",") + `))`
+		for _, label := range opts.Labels {
+			args = append(args, label)
+		}
+	}
+	if opts.StaleBefore != nil {
+		query += ` AND updated_at < ?`
+		args = append(args, clock.Format(*opts.StaleBefore))
+	}
+	switch opts.Sort {
+	case SortPriority:
+		query += ` ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, updated_at DESC, number`
+	case SortUpdated:
+		query += ` ORDER BY updated_at DESC, number`
+	default:
+		query += ` ORDER BY position, number`
+	}
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,12 +154,17 @@ func (Repository) ListByProject(ctx context.Context, q db.DBTX, projectID int64)
 	return out, rows.Err()
 }
 
+func (Repository) SetPosition(ctx context.Context, q db.DBTX, id int64, position int) error {
+	_, err := q.ExecContext(ctx, `UPDATE tickets SET position = ? WHERE id = ?`, position, id)
+	return err
+}
+
 // Search runs an FTS5 MATCH over tickets and returns hits (with project key)
 // ranked by relevance. match must already be a valid FTS5 query string.
 func (Repository) Search(ctx context.Context, q db.DBTX, match string) ([]SearchHit, error) {
 	rows, err := q.QueryContext(ctx,
 		`SELECT t.id, t.project_id, t.number, t.title, t.description, t.type, t.status,
-		        t.priority, t.labels, t.created_at, t.updated_at, t.completed_at, p.key
+		        t.priority, t.labels, t.position, t.created_at, t.updated_at, t.completed_at, p.key
 		 FROM ticket_search s
 		 JOIN tickets t ON t.id = s.rowid
 		 JOIN projects p ON p.id = t.project_id
@@ -136,7 +186,7 @@ func (Repository) Search(ctx context.Context, q db.DBTX, match string) ([]Search
 		var completed sql.NullString
 		if err := rows.Scan(
 			&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description,
-			&typ, &st, &pr, &labels, &created, &updated, &completed, &pkey,
+			&typ, &st, &pr, &labels, &t.Position, &created, &updated, &completed, &pkey,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +212,7 @@ func scanTicket(rs rowScanner) (*Ticket, error) {
 	var completed sql.NullString
 	if err := rs.Scan(
 		&t.ID, &t.ProjectID, &t.Number, &t.Title, &t.Description,
-		&typ, &st, &pr, &labels, &created, &updated, &completed,
+		&typ, &st, &pr, &labels, &t.Position, &created, &updated, &completed,
 	); err != nil {
 		return nil, err
 	}

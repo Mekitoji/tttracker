@@ -89,6 +89,44 @@ func TestTicketNumberingDefaultsAndCreatedEvent(t *testing.T) {
 	}
 }
 
+func TestTicketBoardFiltersSortAndManualOrder(t *testing.T) {
+	a, clk := newApp(t)
+	ctx := context.Background()
+	mustProject(t, a, "PET")
+	first, err := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "old bug", Type: ticket.TypeBug, Priority: ticket.PriorityCritical, Labels: []string{"backend"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clk.advance(31 * 24 * time.Hour)
+	second, _ := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "new task", Type: ticket.TypeTask, Priority: ticket.PriorityLow})
+	third, _ := a.Tickets.Create(ctx, ticket.CreateParams{ProjectKey: "PET", Title: "labelled idea", Type: ticket.TypeIdea, Priority: ticket.PriorityHigh, Labels: []string{"ui"}})
+	if _, err := a.Tickets.SetStatus(ctx, "PET-3", "done"); err != nil {
+		t.Fatal(err)
+	}
+
+	staleBefore := clk.Now().AddDate(0, 0, -30)
+	got, err := a.Tickets.ListWithOptions(ctx, "PET", ticket.ListOptions{Labels: []string{"backend"}, StaleBefore: &staleBefore, Sort: ticket.SortManual})
+	if err != nil || len(got) != 1 || got[0].ID != first.ID {
+		t.Fatalf("stale label filter: %+v err=%v", got, err)
+	}
+	got, _ = a.Tickets.ListWithOptions(ctx, "PET", ticket.ListOptions{WithoutLabels: true, OnlyCurrent: true, Sort: ticket.SortManual})
+	if len(got) != 1 || got[0].ID != second.ID {
+		t.Fatalf("current without labels: %+v", got)
+	}
+	got, _ = a.Tickets.ListWithOptions(ctx, "PET", ticket.ListOptions{Types: []ticket.Type{ticket.TypeBug, ticket.TypeIdea}, Sort: ticket.SortPriority})
+	if len(got) != 2 || got[0].ID != first.ID || got[1].ID != third.ID {
+		t.Fatalf("priority/type sort: %+v", got)
+	}
+
+	if err := a.Tickets.MoveManual(ctx, "PET-2", -1); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = a.Tickets.List(ctx, "PET")
+	if len(got) != 3 || got[0].ID != second.ID || got[1].ID != first.ID {
+		t.Fatalf("manual order: %+v", got)
+	}
+}
+
 func TestTicketStatusCompletedAtAndEvents(t *testing.T) {
 	a, clk := newApp(t)
 	ctx := context.Background()
