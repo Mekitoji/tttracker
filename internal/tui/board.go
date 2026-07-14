@@ -37,6 +37,7 @@ type boardModel struct {
 	projectName  string
 	columns      [][]ticket.Ticket // indexed by boardStatuses order
 	col, row     int
+	colScroll    []int // first visible ticket row, indexed by boardStatuses order
 	width        int
 	height       int
 	showBlocked  bool  // toggle visibility of blocked column
@@ -54,6 +55,7 @@ func loadBoard(a *app.App, ctx context.Context, projectKey string, w, h int) (bo
 		return boardModel{}, err
 	}
 	bm := boardModel{projectKey: projectKey, projectName: proj.Name, columns: groupTickets(tickets), width: w, height: h}
+	bm.colScroll = make([]int, len(boardStatuses))
 	bm.updateVisibleCols()
 	// Start at first primary column (todo, index 1 in boardStatuses)
 	bm.col = bm.visibleCols[0]
@@ -90,6 +92,7 @@ func (m boardModel) reload(a *app.App, ctx context.Context) (boardModel, error) 
 		m.col = m.visibleCols[0]
 	}
 	m.clampRow()
+	m.followCursor()
 	return m, nil
 }
 
@@ -130,20 +133,24 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 		if visIdx > 0 {
 			m.col = m.visibleCols[visIdx-1]
 			m.clampRow()
+			m.followCursor()
 		}
 	case key.Matches(km, keys.Right):
 		visIdx := m.visibleColIndex(m.col)
 		if visIdx >= 0 && visIdx < len(m.visibleCols)-1 {
 			m.col = m.visibleCols[visIdx+1]
 			m.clampRow()
+			m.followCursor()
 		}
 	case key.Matches(km, keys.Up):
 		if m.row > 0 {
 			m.row--
+			m.followCursor()
 		}
 	case key.Matches(km, keys.Down):
 		if m.row < len(m.columns[m.col])-1 {
 			m.row++
+			m.followCursor()
 		}
 	case key.Matches(km, keys.Open):
 		if t, ok := m.selected(); ok {
@@ -198,6 +205,7 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 			m.col = m.visibleCols[0]
 		}
 		m.clampRow()
+		m.followCursor()
 	case key.Matches(km, keys.BoardToggleInactive):
 		m.showInactive = !m.showInactive
 		m.updateVisibleCols()
@@ -207,6 +215,7 @@ func (m boardModel) Update(msg tea.Msg) (boardModel, tea.Cmd) {
 			m.col = m.visibleCols[0]
 		}
 		m.clampRow()
+		m.followCursor()
 	case key.Matches(km, keys.Quit):
 		return m, tea.Quit
 	}
@@ -220,6 +229,31 @@ func (m *boardModel) clampRow() {
 	if m.row < 0 {
 		m.row = 0
 	}
+}
+
+// cardBudget is the number of ticket rows available inside a column after its
+// title. It mirrors the height calculation in View.
+func (m boardModel) cardBudget() int {
+	return max(max(m.height-9, 6)-1, 1)
+}
+
+// followCursor adjusts the active column's viewport so its selected ticket is
+// always visible. Each column keeps its own offset when focus moves sideways.
+func (m *boardModel) followCursor() {
+	if len(m.colScroll) != len(boardStatuses) {
+		m.colScroll = make([]int, len(boardStatuses))
+	}
+	if m.col < 0 || m.col >= len(m.columns) {
+		return
+	}
+	budget := m.cardBudget()
+	scroll := clampScroll(m.colScroll[m.col], len(m.columns[m.col]), budget)
+	if m.row < scroll {
+		scroll = m.row
+	} else if m.row >= scroll+budget {
+		scroll = m.row - budget + 1
+	}
+	m.colScroll[m.col] = clampScroll(scroll, len(m.columns[m.col]), budget)
 }
 
 func (m boardModel) selected() (ticket.Ticket, bool) {
@@ -239,6 +273,7 @@ func (m *boardModel) focusTicket(number int) bool {
 		for row, t := range tickets {
 			if t.Number == number {
 				m.col, m.row = col, row
+				m.followCursor()
 				return true
 			}
 		}
@@ -265,6 +300,7 @@ func (m *boardModel) focusTicketVisible(number int) bool {
 		return true
 	}
 	m.col, m.row = m.visibleCols[0], 0
+	m.followCursor()
 	return false
 }
 
@@ -281,18 +317,30 @@ func (m boardModel) View() string {
 	// below, so columns never change height between view switches no matter how
 	// many cards a column holds.
 	contentHeight := max(m.height-9, 6)
+	cardRows := max(contentHeight-1, 1)
 
 	cols := make([]string, len(m.visibleCols))
 	for visIdx, colIdx := range m.visibleCols {
 		st := boardStatuses[colIdx]
 		var b strings.Builder
-		b.WriteString(columnTitleStyle.Render(boardTitles[st]))
+		tickets := m.columns[colIdx]
+		start := 0
+		if colIdx < len(m.colScroll) {
+			start = clampScroll(m.colScroll[colIdx], len(tickets), cardRows)
+		}
+		end := min(start+cardRows, len(tickets))
+		title := boardTitles[st]
+		if len(tickets) > cardRows {
+			title = fmt.Sprintf("%s  %d–%d/%d", title, start+1, end, len(tickets))
+		}
+		b.WriteString(columnTitleStyle.Render(ansi.Truncate(title, cardW, "…")))
 		b.WriteString("\n")
 
-		if len(m.columns[colIdx]) == 0 {
+		if len(tickets) == 0 {
 			b.WriteString(helpStyle.Render("—"))
 		} else {
-			for j, t := range m.columns[colIdx] {
+			for j := start; j < end; j++ {
+				t := tickets[j]
 				selected := colIdx == m.col && j == m.row
 				b.WriteString(renderCard(t, selected, cardW))
 				b.WriteString("\n")
@@ -317,6 +365,7 @@ func (m boardModel) View() string {
 
 func (m boardModel) setSize(w, h int) boardModel {
 	m.width, m.height = w, h
+	m.followCursor()
 	return m
 }
 
